@@ -1,5 +1,6 @@
 package com.varabyte.kobweb.site.pages
 
+/*
 import androidx.compose.runtime.Composable
 import com.varabyte.kobweb.core.Page
 import com.varabyte.kobweb.core.PageContext
@@ -13,3 +14,4 @@ fun DocsPage(ctx: PageContext) {
     val firstArticle = firstCategory.subcategories.first().articles.first()
     ctx.router.tryRoutingTo(firstArticle.route, updateHistoryMode = UpdateHistoryMode.REPLACE)
 }
+*/

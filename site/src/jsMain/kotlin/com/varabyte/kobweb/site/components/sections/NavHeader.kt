@@ -3,7 +3,6 @@ package com.varabyte.kobweb.site.components.sections
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
-import com.varabyte.kobweb.browser.dom.ElementTarget
 import com.varabyte.kobweb.compose.css.CSSLengthNumericValue
 import com.varabyte.kobweb.compose.css.StyleVariable
 import com.varabyte.kobweb.compose.css.functions.blur
@@ -16,15 +15,9 @@ import com.varabyte.kobweb.compose.ui.Modifier
 import com.varabyte.kobweb.compose.ui.graphics.Color
 import com.varabyte.kobweb.compose.ui.graphics.Colors
 import com.varabyte.kobweb.compose.ui.modifiers.*
-import com.varabyte.kobweb.compose.ui.toAttrs
-import com.varabyte.kobweb.navigation.Anchor
 import com.varabyte.kobweb.silk.components.forms.Button
 import com.varabyte.kobweb.silk.components.icons.MoonIcon
 import com.varabyte.kobweb.silk.components.icons.SunIcon
-import com.varabyte.kobweb.silk.components.icons.fa.FaDiscord
-import com.varabyte.kobweb.silk.components.icons.fa.FaGithub
-import com.varabyte.kobweb.silk.components.navigation.Link
-import com.varabyte.kobweb.silk.components.overlay.Tooltip
 import com.varabyte.kobweb.silk.init.InitSilk
 import com.varabyte.kobweb.silk.init.InitSilkContext
 import com.varabyte.kobweb.silk.style.CssStyle
@@ -39,12 +32,10 @@ import com.varabyte.kobweb.silk.theme.colors.palette.toPalette
 import com.varabyte.kobweb.silk.theme.colors.shifted
 import com.varabyte.kobweb.site.components.sections.listing.UnstyledButtonVariant
 import com.varabyte.kobweb.site.components.style.dividerBoxShadow
-import com.varabyte.kobweb.site.components.widgets.Search
 import org.jetbrains.compose.web.css.Position
 import org.jetbrains.compose.web.css.cssRem
 import org.jetbrains.compose.web.css.percent
 import org.jetbrains.compose.web.css.px
-import org.jetbrains.compose.web.dom.Img
 
 val NavHeaderHeight by StyleVariable<CSSLengthNumericValue>()
 
@@ -86,20 +77,6 @@ val HoverBrightenStyle = CssStyle {
     }
 }
 
-@Composable
-private fun HomeLogo() {
-    Anchor(
-        href = "/",
-    ) {
-        Box(Modifier.margin(4.px)) {
-            Img(
-                "/images/logo.png",
-                attrs = Modifier.height(32.px).toAttrs()
-            )
-        }
-    }
-}
-
 private fun getNavBackgroundColor(colorMode: ColorMode): Color.Rgb {
     return when (colorMode) {
         ColorMode.DARK -> Colors.Black
@@ -119,7 +96,7 @@ fun NavHeader() {
             Modifier.fillMaxWidth(90.percent),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            HomeLogo()
+            TrainerBrand()
             Spacer()
 
             Row(
@@ -129,6 +106,7 @@ fun NavHeader() {
                     .fontSize(1.5.cssRem),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                /*
                 Search()
 
                 Link("https://github.com/varabyte/kobweb", HoverBrightenStyle.toModifier()) {
@@ -140,6 +118,7 @@ fun NavHeader() {
                     FaDiscord()
                 }
                 Tooltip(ElementTarget.PreviousSibling, "Chat with us on Discord", Modifier.navHeaderZIndex())
+                */
 
                 Button(
                     onClick = { colorMode = colorMode.opposite },
@@ -151,7 +130,6 @@ fun NavHeader() {
                         ColorMode.LIGHT -> MoonIcon()
                     }
                 }
-                Tooltip(ElementTarget.PreviousSibling, "Toggle color mode", Modifier.navHeaderZIndex())
             }
         }
     }

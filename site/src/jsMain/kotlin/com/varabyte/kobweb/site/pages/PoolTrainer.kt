@@ -17,7 +17,11 @@ import com.varabyte.kobweb.core.init.InitRoute
 import com.varabyte.kobweb.core.init.InitRouteContext
 import com.varabyte.kobweb.core.layout.Layout
 import com.varabyte.kobweb.silk.components.forms.Button
+import com.varabyte.kobweb.silk.components.text.SpanText
 import com.varabyte.kobweb.site.components.layouts.PageLayoutData
+import com.varabyte.kobweb.site.components.style.MutedSpanTextVariant
+import com.varabyte.kobweb.site.components.style.SiteTextSize
+import com.varabyte.kobweb.site.components.style.siteText
 import kotlinx.browser.window
 import org.jetbrains.compose.web.css.FlexWrap
 import org.jetbrains.compose.web.css.LineStyle
@@ -43,9 +47,9 @@ private const val TABLE_WIDTH = 1000.0
 private const val TABLE_HEIGHT = 560.0
 private const val BALL_RADIUS = 20.0
 private const val POCKET_RADIUS = 34.0
-private const val OVERLAP_WIDTH = 520.0
-private const val OVERLAP_HEIGHT = 220.0
-private const val OVERLAP_BALL_RADIUS = 40.0
+private const val OVERLAP_WIDTH = 620.0
+private const val OVERLAP_HEIGHT = 280.0
+private const val OVERLAP_BALL_RADIUS = 68.0
 
 private data class Point(val x: Double, val y: Double) {
     operator fun plus(other: Point) = Point(x + other.x, y + other.y)
@@ -87,6 +91,11 @@ fun initPoolTrainerPage(ctx: InitRouteContext) {
 @Composable
 @Layout(".components.layouts.PageLayout")
 fun PoolTrainerPage() {
+    PoolTrainerScreen()
+}
+
+@Composable
+fun PoolTrainerScreen() {
     var setup by remember { mutableStateOf(generateShotSetup()) }
     val perfectOverlap = remember(setup) { overlapOffsetFromAngle(setup.target.cutAngleDegrees, OVERLAP_BALL_RADIUS) }
 
@@ -120,19 +129,13 @@ fun PoolTrainerPage() {
             horizontalAlignment = Alignment.Start,
         ) {
             H1 {
-                Text("Pool Potting Trainer")
+                Text("Billiards Trainer")
             }
-            P(
-                attrs = Modifier
-                    .maxWidth(75.cssRem)
-                    .margin(0.px)
-                    .fontSize(1.05.cssRem)
-                    .lineHeight(1.65)
-                    .color(Color.rgba(255, 255, 255, 0.74f))
-                    .toAttrs()
-            ) {
-                Text("Study the random table, read the cut from the highlighted pocket, then build the cue-ball overlap below. No guide lines are shown. The side of the overlap matters.")
-            }
+            SpanText(
+                "Study the random table, read the cut from the highlighted pocket, then build the cue-ball overlap below. No guide lines are shown. The side of the overlap matters.",
+                Modifier.maxWidth(75.cssRem).siteText(SiteTextSize.NORMAL),
+                MutedSpanTextVariant
+            )
         }
 
         Column(
@@ -148,9 +151,9 @@ fun PoolTrainerPage() {
                 }
                 .gap(1.25.cssRem)
         ) {
-            PoolTable(setup)
+            PoolTable(setup, if (submitted) userCutAngle else null)
 
-            Row(
+            /*Row(
                 Modifier
                     .fillMaxWidth()
                     .flexWrap(FlexWrap.Wrap)
@@ -163,21 +166,8 @@ fun PoolTrainerPage() {
                     StatusChip("Required side", angleSideLabel(setup.target.cutAngleDegrees), Color.rgb(115, 192, 214))
                 }
 
-                Row(Modifier.gap(0.75.cssRem).flexWrap(FlexWrap.Wrap)) {
-                    Button(
-                        onClick = { submitted = true },
-                        modifier = Modifier.padding(leftRight = 1.1.cssRem, topBottom = 0.65.cssRem)
-                    ) {
-                        Text("Check overlap")
-                    }
-                    Button(
-                        onClick = { setup = generateShotSetup() },
-                        modifier = Modifier.padding(leftRight = 1.1.cssRem, topBottom = 0.65.cssRem)
-                    ) {
-                        Text("New layout")
-                    }
-                }
-            }
+
+            }*/
         }
 
         Column(
@@ -192,27 +182,6 @@ fun PoolTrainerPage() {
                 }
                 .gap(1.1.cssRem)
         ) {
-            Column(Modifier.gap(0.35.cssRem)) {
-                Span(
-                    attrs = Modifier
-                        .fontSize(1.3.cssRem)
-                        .fontWeight(FontWeight.Medium)
-                        .color(Colors.White)
-                        .toAttrs()
-                ) {
-                    Text("Fractional overlap")
-                }
-                P(
-                    attrs = Modifier
-                        .margin(0.px)
-                        .fontSize(1.cssRem)
-                        .lineHeight(1.6)
-                        .color(Color.rgba(255, 255, 255, 0.72f))
-                        .toAttrs()
-                ) {
-                    Text("Click and drag the cue ball horizontally over the object ball to recreate the contact picture for the shot above.")
-                }
-            }
 
             Div(
                 attrs = Modifier
@@ -247,6 +216,39 @@ fun PoolTrainerPage() {
                 )
             }
 
+            Column(Modifier.gap(0.35.cssRem)) {
+                Span(
+                    attrs = Modifier
+                        .fontSize(1.3.cssRem)
+                        .fontWeight(FontWeight.Medium)
+                        .color(Colors.White)
+                        .toAttrs()
+                ) {
+                    Text("Fractional overlap")
+                }
+                SpanText(
+                    "Click and drag the cue ball horizontally over the object ball to recreate the contact picture for the shot above.",
+                    Modifier.siteText(SiteTextSize.SMALL),
+                    MutedSpanTextVariant
+                )
+            }
+
+            Row(Modifier.gap(0.75.cssRem).flexWrap(FlexWrap.Wrap)) {
+                Button(
+                    onClick = { submitted = true },
+                    modifier = Modifier.padding(leftRight = 1.1.cssRem, topBottom = 0.65.cssRem)
+                ) {
+                    Text("Check overlap")
+                }
+                Button(
+                    onClick = { setup = generateShotSetup() },
+                    modifier = Modifier.padding(leftRight = 1.1.cssRem, topBottom = 0.65.cssRem)
+                ) {
+                    Text("New layout")
+                }
+            }
+
+
             ResultPanel(
                 submitted = submitted,
                 perfectAngle = setup.target.cutAngleDegrees,
@@ -275,7 +277,8 @@ fun PoolTrainerPage() {
 }
 
 @Composable
-private fun PoolTable(setup: ShotSetup) {
+private fun PoolTable(setup: ShotSetup, shownCutAngle: Double?) {
+    val shotLineEnd = shownCutAngle?.let { calculateShotLineEnd(setup, it) }
     Div(
         attrs = Modifier
             .fillMaxWidth()
@@ -303,6 +306,15 @@ private fun PoolTable(setup: ShotSetup) {
                 }
                 .toAttrs()
         ) {
+            if (shotLineEnd != null) {
+                ShotLine(
+                    start = setup.objectBall,
+                    end = shotLineEnd,
+                    fieldWidth = TABLE_WIDTH,
+                    fieldHeight = TABLE_HEIGHT,
+                )
+            }
+
             pockets.forEach { pocket ->
                 val isTarget = pocket == setup.target.pocket
                 BallLike(
@@ -340,6 +352,37 @@ private fun PoolTable(setup: ShotSetup) {
 }
 
 @Composable
+private fun ShotLine(
+    start: Point,
+    end: Point,
+    fieldWidth: Double,
+    fieldHeight: Double,
+) {
+    val dx = end.x - start.x
+    val dy = end.y - start.y
+    val length = sqrt(dx * dx + dy * dy)
+    val angle = atan2(dy, dx) * 180.0 / PI
+
+    Div(
+        attrs = Modifier
+            .position(Position.Absolute)
+            .left((start.x / fieldWidth * 100).percent)
+            .top((start.y / fieldHeight * 100).percent)
+            .width((length / fieldWidth * 100).percent)
+            .height(4.px)
+            .backgroundColor(Color.rgba(255, 232, 171, 0.92f))
+            .borderRadius(999.px)
+            .zIndex(1)
+            .styleModifier {
+                property("transform", "rotate(${angle}deg)")
+                property("transform-origin", "0 0")
+                property("box-shadow", "0 0 12px rgba(255, 226, 139, 0.72)")
+            }
+            .toAttrs()
+    )
+}
+
+@Composable
 private fun OverlapTrainer(
     overlapOffset: Double,
     perfectOverlap: Double,
@@ -354,7 +397,7 @@ private fun OverlapTrainer(
     Div(
         attrs = Modifier
             .fillMaxWidth()
-            .maxWidth(720.px)
+            .maxWidth(840.px)
             .alignSelf(AlignSelf.Center)
             .styleModifier { property("aspect-ratio", "${OVERLAP_WIDTH / OVERLAP_HEIGHT}") }
             .borderRadius(26.px)
@@ -442,7 +485,7 @@ private fun ResultPanel(
     val feedback = when {
         absError < 0.5 -> "Dead on."
         absError < 2.0 -> "Very close."
-        absError < 5.0 -> "Potting line was there, but the overlap drifted."
+        absError < 5.0 -> "Not bad."
         else -> "The overlap side or amount was clearly off."
     }
 
@@ -467,7 +510,7 @@ private fun ResultPanel(
                 .color(Colors.White)
                 .toAttrs()
         ) {
-            Text("${formatDegrees(absError)} off. $feedback")
+            Text("${formatDegreesText(absError)} off. $feedback")
         }
         P(
             attrs = Modifier
@@ -477,7 +520,7 @@ private fun ResultPanel(
                 .color(Color.rgba(255, 255, 255, 0.78f))
                 .toAttrs()
         ) {
-            Text("$directionalMiss Required cut: ${formatSignedDegrees(perfectAngle)}. Your overlap built: ${formatSignedDegrees(userAngle)}.")
+            Text("$directionalMiss Required cut: ${formatSignedDegreesText(perfectAngle)}. Your overlap built: ${formatSignedDegreesText(userAngle)}.")
         }
     }
 }
@@ -539,6 +582,12 @@ private fun BallLike(
             .styleModifier { property("box-shadow", glow) }
             .toAttrs()
     )
+}
+
+private fun calculateShotLineEnd(setup: ShotSetup, cutAngleDegrees: Double): Point {
+    val cueToObject = normalized(setup.objectBall - setup.cueBall) ?: return setup.objectBall
+    val shotDirection = rotate(cueToObject, cutAngleDegrees)
+    return rayToTableBounds(setup.objectBall, shotDirection)
 }
 
 private fun generateShotSetup(random: Random = Random.Default): ShotSetup {
@@ -626,6 +675,31 @@ private fun signedAngleDegrees(from: Point, to: Point): Double {
     return atan2(cross, dot) * 180.0 / PI
 }
 
+private fun rotate(vector: Point, angleDegrees: Double): Point {
+    val radians = angleDegrees * PI / 180.0
+    val cosValue = kotlin.math.cos(radians)
+    val sinValue = kotlin.math.sin(radians)
+    return Point(
+        x = vector.x * cosValue - vector.y * sinValue,
+        y = vector.x * sinValue + vector.y * cosValue,
+    )
+}
+
+private fun rayToTableBounds(origin: Point, direction: Point): Point {
+    val candidates = buildList {
+        if (direction.x > 0.0) add((TABLE_WIDTH - origin.x) / direction.x)
+        if (direction.x < 0.0) add((0.0 - origin.x) / direction.x)
+        if (direction.y > 0.0) add((TABLE_HEIGHT - origin.y) / direction.y)
+        if (direction.y < 0.0) add((0.0 - origin.y) / direction.y)
+    }.filter { it > 0.0 }
+
+    val t = candidates.minOrNull() ?: 0.0
+    return Point(
+        x = (origin.x + direction.x * t).coerceIn(0.0, TABLE_WIDTH),
+        y = (origin.y + direction.y * t).coerceIn(0.0, TABLE_HEIGHT),
+    )
+}
+
 private fun overlapOffsetFromAngle(angleDegrees: Double, ballRadius: Double): Double {
     return -sin(angleDegrees * PI / 180.0) * ballRadius * 2.0
 }
@@ -641,6 +715,13 @@ private fun angleSideLabel(angleDegrees: Double): String {
         angleDegrees < -2.0 -> "Left-side overlap"
         else -> "Near center-ball"
     }
+}
+
+private fun formatDegreesText(value: Double): String = "${(value * 10.0).toInt() / 10.0} deg"
+
+private fun formatSignedDegreesText(value: Double): String {
+    val rounded = (value * 10.0).toInt() / 10.0
+    return "${if (rounded > 0) "+" else ""}$rounded deg"
 }
 
 private fun angleDirectionLabel(angleDegrees: Double): String {
