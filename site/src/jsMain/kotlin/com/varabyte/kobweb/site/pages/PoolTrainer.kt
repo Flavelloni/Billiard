@@ -16,7 +16,6 @@ import com.varabyte.kobweb.core.data.add
 import com.varabyte.kobweb.core.init.InitRoute
 import com.varabyte.kobweb.core.init.InitRouteContext
 import com.varabyte.kobweb.core.layout.Layout
-import com.varabyte.kobweb.silk.components.forms.Button
 import com.varabyte.kobweb.silk.components.text.SpanText
 import com.varabyte.kobweb.site.components.layouts.PageLayoutData
 import com.varabyte.kobweb.site.components.style.MutedSpanTextVariant
@@ -236,6 +235,14 @@ fun PoolTrainerScreen() {
                     perfectOverlap = perfectOverlap,
                     submitted = submitted,
                     dragging = dragging,
+                    onCueMouseDown = { clientX ->
+                        dragging = true
+                        updateOverlap(clientX)
+                    },
+                    onCueTouchStart = { clientX ->
+                        dragging = true
+                        updateOverlap(clientX)
+                    },
                 )
             }
 
@@ -257,18 +264,8 @@ fun PoolTrainerScreen() {
             }
 
             Row(Modifier.gap(0.75.cssRem).flexWrap(FlexWrap.Wrap)) {
-                Button(
-                    onClick = { submitted = true },
-                    modifier = Modifier.padding(leftRight = 1.1.cssRem, topBottom = 0.65.cssRem)
-                ) {
-                    Text("Check overlap")
-                }
-                Button(
-                    onClick = { setup = generateShotSetup() },
-                    modifier = Modifier.padding(leftRight = 1.1.cssRem, topBottom = 0.65.cssRem)
-                ) {
-                    Text("New layout")
-                }
+                ActionButton("Check overlap") { submitted = true }
+                ActionButton("New layout") { setup = generateShotSetup() }
             }
 
 
@@ -424,6 +421,8 @@ private fun OverlapTrainer(
     perfectOverlap: Double,
     submitted: Boolean,
     dragging: Boolean,
+    onCueMouseDown: (Double) -> Unit,
+    onCueTouchStart: (Double) -> Unit,
 ) {
     val objectCenter = Point(OVERLAP_WIDTH / 2.0, OVERLAP_HEIGHT / 2.0 + 6.0)
     val cueCenter = Point(objectCenter.x + overlapOffset, objectCenter.y)
@@ -485,8 +484,43 @@ private fun OverlapTrainer(
                     property("cursor", if (dragging) "grabbing" else "grab")
                 }
                 .zIndex(3)
-                .toAttrs()
+                .toAttrs {
+                    onMouseDown { event ->
+                        event.preventDefault()
+                        onCueMouseDown(event.clientX.toDouble())
+                    }
+                    onTouchStart { event ->
+                        event.preventDefault()
+                        firstTouchClientPosition(event)?.first?.let(onCueTouchStart)
+                    }
+                }
         )
+    }
+}
+
+@Composable
+private fun ActionButton(label: String, onActivate: () -> Unit) {
+    Div(
+        attrs = Modifier
+            .padding(leftRight = 1.1.cssRem, topBottom = 0.65.cssRem)
+            .borderRadius(14.px)
+            .backgroundColor(Color.rgba(255, 255, 255, 0.1f))
+            .border(1.px, LineStyle.Solid, Color.rgba(255, 255, 255, 0.18f))
+            .color(Colors.White)
+            .fontWeight(FontWeight.Medium)
+            .styleModifier {
+                property("cursor", "pointer")
+                property("user-select", "none")
+            }
+            .toAttrs {
+                onClick { onActivate() }
+                onTouchStart {
+                    it.preventDefault()
+                    onActivate()
+                }
+            }
+    ) {
+        Text(label)
     }
 }
 

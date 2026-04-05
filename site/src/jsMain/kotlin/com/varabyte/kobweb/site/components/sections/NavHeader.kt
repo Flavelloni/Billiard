@@ -17,7 +17,6 @@ import com.varabyte.kobweb.compose.ui.graphics.Color
 import com.varabyte.kobweb.compose.ui.graphics.Colors
 import com.varabyte.kobweb.compose.ui.modifiers.*
 import com.varabyte.kobweb.compose.ui.toAttrs
-import com.varabyte.kobweb.silk.components.forms.Button
 import com.varabyte.kobweb.silk.components.icons.MoonIcon
 import com.varabyte.kobweb.silk.components.icons.SunIcon
 import com.varabyte.kobweb.silk.init.InitSilk
@@ -130,17 +129,13 @@ fun NavHeader() {
                         .toAttrs {
                             style { property("cursor", "pointer") }
                             onClick { colorMode = colorMode.opposite }
-                            onTouchEnd {
+                            onTouchStart {
                                 it.preventDefault()
                                 colorMode = colorMode.opposite
                             }
                         }
                 ) {
-                    Button(
-                        onClick = { colorMode = colorMode.opposite },
-                        modifier = Modifier.pointerEvents(PointerEvents.None),
-                        variant = UnstyledButtonVariant,
-                    ) {
+                    Div(attrs = Modifier.pointerEvents(PointerEvents.None).toAttrs()) {
                         when (colorMode) {
                             ColorMode.DARK -> SunIcon()
                             ColorMode.LIGHT -> MoonIcon()
