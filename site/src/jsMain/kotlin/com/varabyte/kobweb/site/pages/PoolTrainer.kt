@@ -29,6 +29,7 @@ import org.jetbrains.compose.web.css.cssRem
 import org.jetbrains.compose.web.css.percent
 import org.jetbrains.compose.web.css.px
 import org.jetbrains.compose.web.dom.Div
+import org.jetbrains.compose.web.dom.Button
 import org.jetbrains.compose.web.dom.H1
 import org.jetbrains.compose.web.dom.P
 import org.jetbrains.compose.web.dom.Span
@@ -102,6 +103,8 @@ fun PoolTrainerScreen() {
     var submitted by remember(setup.id) { mutableStateOf(false) }
     var overlapArea by remember { mutableStateOf<HTMLElement?>(null) }
     var dragging by remember(setup.id) { mutableStateOf(false) }
+    val currentOverlapOffset by rememberUpdatedState(overlapOffset)
+    val currentDragging by rememberUpdatedState(dragging)
 
     val userCutAngle = overlapOffsetToAngle(overlapOffset, OVERLAP_BALL_RADIUS)
     val angleError = userCutAngle - setup.target.cutAngleDegrees
@@ -116,7 +119,7 @@ fun PoolTrainerScreen() {
         val rect = overlapArea?.getBoundingClientRect() ?: return
         val localX = ((clientX - rect.left) / rect.width).coerceIn(0.0, 1.0) * OVERLAP_WIDTH
         val localY = ((clientY - rect.top) / rect.height).coerceIn(0.0, 1.0) * OVERLAP_HEIGHT
-        val cueCenter = Point(OVERLAP_WIDTH / 2.0 + overlapOffset, OVERLAP_HEIGHT / 2.0 + 6.0)
+        val cueCenter = Point(OVERLAP_WIDTH / 2.0 + currentOverlapOffset, OVERLAP_HEIGHT / 2.0 + 6.0)
         if (distance(Point(localX, localY), cueCenter) <= OVERLAP_BALL_RADIUS * 1.05) {
             dragging = true
             updateOverlap(clientX)
@@ -200,9 +203,37 @@ fun PoolTrainerScreen() {
                     .toAttrs {
                         ref { element ->
                             overlapArea = element
+
+                            val touchStart: (dynamic) -> Unit = { event ->
+                                event.preventDefault()
+                                firstTouchClientPosition(event)?.let { (x, y) -> tryStartDrag(x, y) }
+                            }
+                            val touchMove: (dynamic) -> Unit = { event ->
+                                if (currentDragging) {
+                                    event.preventDefault()
+                                    firstTouchClientPosition(event)?.first?.let(::updateOverlap)
+                                }
+                            }
+                            val touchEnd: (dynamic) -> Unit = {
+                                dragging = false
+                            }
+
+                            element.addEventListener("touchstart", touchStart, js("{ passive: false }"))
+                            window.addEventListener("touchmove", touchMove, js("{ passive: false }"))
+                            window.addEventListener("touchend", touchEnd)
+                            window.addEventListener("touchcancel", touchEnd)
+
                             onDispose {
                                 if (overlapArea == element) overlapArea = null
+                                element.removeEventListener("touchstart", touchStart)
+                                window.removeEventListener("touchmove", touchMove)
+                                window.removeEventListener("touchend", touchEnd)
+                                window.removeEventListener("touchcancel", touchEnd)
                             }
+                        }
+                        onMouseDown { event ->
+                            event.preventDefault()
+                            tryStartDrag(event.clientX.toDouble(), event.clientY.toDouble())
                         }
                         onMouseMove { event ->
                             if (dragging) {
@@ -210,24 +241,8 @@ fun PoolTrainerScreen() {
                                 updateOverlap(event.clientX.toDouble())
                             }
                         }
-                        onMouseDown { event ->
-                            event.preventDefault()
-                            tryStartDrag(event.clientX.toDouble(), event.clientY.toDouble())
-                        }
                         onMouseUp { dragging = false }
                         onMouseLeave { dragging = false }
-                        onTouchStart { event ->
-                            event.preventDefault()
-                            firstTouchClientPosition(event)?.let { (x, y) -> tryStartDrag(x, y) }
-                        }
-                        onTouchMove { event ->
-                            if (dragging) {
-                                event.preventDefault()
-                                firstTouchClientPosition(event)?.first?.let(::updateOverlap)
-                            }
-                        }
-                        onTouchEnd { dragging = false }
-                        onTouchCancel { dragging = false }
                     }
             ) {
                 OverlapTrainer(
@@ -235,14 +250,6 @@ fun PoolTrainerScreen() {
                     perfectOverlap = perfectOverlap,
                     submitted = submitted,
                     dragging = dragging,
-                    onCueMouseDown = { clientX ->
-                        dragging = true
-                        updateOverlap(clientX)
-                    },
-                    onCueTouchStart = { clientX ->
-                        dragging = true
-                        updateOverlap(clientX)
-                    },
                 )
             }
 
@@ -278,35 +285,6 @@ fun PoolTrainerScreen() {
         }
     }
 
-    DisposableEffect(dragging) {
-        if (!dragging) return@DisposableEffect onDispose { }
-        val moveListener: (dynamic) -> Unit = { event ->
-            updateOverlap((event.clientX as Number).toDouble())
-        }
-        val touchMoveListener: (dynamic) -> Unit = { event ->
-            event.preventDefault()
-            firstTouchClientPosition(event)?.first?.let(::updateOverlap)
-        }
-        val upListener: (dynamic) -> Unit = {
-            dragging = false
-        }
-        val touchEndListener: (dynamic) -> Unit = {
-            dragging = false
-        }
-
-        window.addEventListener("mousemove", moveListener)
-        window.addEventListener("mouseup", upListener)
-        window.addEventListener("touchmove", touchMoveListener, js("{ passive: false }"))
-        window.addEventListener("touchend", touchEndListener)
-        window.addEventListener("touchcancel", touchEndListener)
-        onDispose {
-            window.removeEventListener("mousemove", moveListener)
-            window.removeEventListener("mouseup", upListener)
-            window.removeEventListener("touchmove", touchMoveListener)
-            window.removeEventListener("touchend", touchEndListener)
-            window.removeEventListener("touchcancel", touchEndListener)
-        }
-    }
 }
 
 @Composable
@@ -421,8 +399,6 @@ private fun OverlapTrainer(
     perfectOverlap: Double,
     submitted: Boolean,
     dragging: Boolean,
-    onCueMouseDown: (Double) -> Unit,
-    onCueTouchStart: (Double) -> Unit,
 ) {
     val objectCenter = Point(OVERLAP_WIDTH / 2.0, OVERLAP_HEIGHT / 2.0 + 6.0)
     val cueCenter = Point(objectCenter.x + overlapOffset, objectCenter.y)
@@ -484,23 +460,14 @@ private fun OverlapTrainer(
                     property("cursor", if (dragging) "grabbing" else "grab")
                 }
                 .zIndex(3)
-                .toAttrs {
-                    onMouseDown { event ->
-                        event.preventDefault()
-                        onCueMouseDown(event.clientX.toDouble())
-                    }
-                    onTouchStart { event ->
-                        event.preventDefault()
-                        firstTouchClientPosition(event)?.first?.let(onCueTouchStart)
-                    }
-                }
+                .toAttrs()
         )
     }
 }
 
 @Composable
 private fun ActionButton(label: String, onActivate: () -> Unit) {
-    Div(
+    Button(
         attrs = Modifier
             .padding(leftRight = 1.1.cssRem, topBottom = 0.65.cssRem)
             .borderRadius(14.px)
@@ -514,10 +481,6 @@ private fun ActionButton(label: String, onActivate: () -> Unit) {
             }
             .toAttrs {
                 onClick { onActivate() }
-                onTouchStart {
-                    it.preventDefault()
-                    onActivate()
-                }
             }
     ) {
         Text(label)

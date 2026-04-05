@@ -3,7 +3,6 @@ package com.varabyte.kobweb.site.components.sections
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
-import com.varabyte.kobweb.compose.css.PointerEvents
 import com.varabyte.kobweb.compose.css.CSSLengthNumericValue
 import com.varabyte.kobweb.compose.css.StyleVariable
 import com.varabyte.kobweb.compose.css.functions.blur
@@ -31,12 +30,12 @@ import com.varabyte.kobweb.silk.theme.colors.ColorMode
 import com.varabyte.kobweb.silk.theme.colors.palette.color
 import com.varabyte.kobweb.silk.theme.colors.palette.toPalette
 import com.varabyte.kobweb.silk.theme.colors.shifted
-import com.varabyte.kobweb.site.components.sections.listing.UnstyledButtonVariant
 import com.varabyte.kobweb.site.components.style.dividerBoxShadow
 import org.jetbrains.compose.web.css.Position
 import org.jetbrains.compose.web.css.cssRem
 import org.jetbrains.compose.web.css.percent
 import org.jetbrains.compose.web.css.px
+import org.jetbrains.compose.web.dom.Button
 import org.jetbrains.compose.web.dom.Div
 
 val NavHeaderHeight by StyleVariable<CSSLengthNumericValue>()
@@ -122,24 +121,18 @@ fun NavHeader() {
                 Tooltip(ElementTarget.PreviousSibling, "Chat with us on Discord", Modifier.navHeaderZIndex())
                 */
 
-                Div(
+                Button(
                     attrs = HoverBrightenStyle.toModifier()
                         .padding(6.px)
                         .borderRadius(999.px)
                         .toAttrs {
                             style { property("cursor", "pointer") }
                             onClick { colorMode = colorMode.opposite }
-                            onTouchStart {
-                                it.preventDefault()
-                                colorMode = colorMode.opposite
-                            }
                         }
                 ) {
-                    Div(attrs = Modifier.pointerEvents(PointerEvents.None).toAttrs()) {
-                        when (colorMode) {
-                            ColorMode.DARK -> SunIcon()
-                            ColorMode.LIGHT -> MoonIcon()
-                        }
+                    when (colorMode) {
+                        ColorMode.DARK -> SunIcon()
+                        ColorMode.LIGHT -> MoonIcon()
                     }
                 }
             }
