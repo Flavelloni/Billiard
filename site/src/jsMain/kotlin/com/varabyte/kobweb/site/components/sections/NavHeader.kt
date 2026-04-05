@@ -3,6 +3,7 @@ package com.varabyte.kobweb.site.components.sections
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import com.varabyte.kobweb.compose.css.PointerEvents
 import com.varabyte.kobweb.compose.css.CSSLengthNumericValue
 import com.varabyte.kobweb.compose.css.StyleVariable
 import com.varabyte.kobweb.compose.css.functions.blur
@@ -15,6 +16,7 @@ import com.varabyte.kobweb.compose.ui.Modifier
 import com.varabyte.kobweb.compose.ui.graphics.Color
 import com.varabyte.kobweb.compose.ui.graphics.Colors
 import com.varabyte.kobweb.compose.ui.modifiers.*
+import com.varabyte.kobweb.compose.ui.toAttrs
 import com.varabyte.kobweb.silk.components.forms.Button
 import com.varabyte.kobweb.silk.components.icons.MoonIcon
 import com.varabyte.kobweb.silk.components.icons.SunIcon
@@ -36,6 +38,7 @@ import org.jetbrains.compose.web.css.Position
 import org.jetbrains.compose.web.css.cssRem
 import org.jetbrains.compose.web.css.percent
 import org.jetbrains.compose.web.css.px
+import org.jetbrains.compose.web.dom.Div
 
 val NavHeaderHeight by StyleVariable<CSSLengthNumericValue>()
 
@@ -120,14 +123,28 @@ fun NavHeader() {
                 Tooltip(ElementTarget.PreviousSibling, "Chat with us on Discord", Modifier.navHeaderZIndex())
                 */
 
-                Button(
-                    onClick = { colorMode = colorMode.opposite },
-                    modifier = HoverBrightenStyle.toModifier(),
-                    variant = UnstyledButtonVariant,
+                Div(
+                    attrs = HoverBrightenStyle.toModifier()
+                        .padding(6.px)
+                        .borderRadius(999.px)
+                        .toAttrs {
+                            style { property("cursor", "pointer") }
+                            onClick { colorMode = colorMode.opposite }
+                            onTouchEnd {
+                                it.preventDefault()
+                                colorMode = colorMode.opposite
+                            }
+                        }
                 ) {
-                    when (colorMode) {
-                        ColorMode.DARK -> SunIcon()
-                        ColorMode.LIGHT -> MoonIcon()
+                    Button(
+                        onClick = { colorMode = colorMode.opposite },
+                        modifier = Modifier.pointerEvents(PointerEvents.None),
+                        variant = UnstyledButtonVariant,
+                    ) {
+                        when (colorMode) {
+                            ColorMode.DARK -> SunIcon()
+                            ColorMode.LIGHT -> MoonIcon()
+                        }
                     }
                 }
             }

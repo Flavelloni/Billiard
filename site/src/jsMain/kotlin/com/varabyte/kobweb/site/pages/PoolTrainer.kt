@@ -113,6 +113,17 @@ fun PoolTrainerScreen() {
         overlapOffset = (localX - OVERLAP_WIDTH / 2.0).coerceIn(-OVERLAP_BALL_RADIUS * 2.0, OVERLAP_BALL_RADIUS * 2.0)
     }
 
+    fun tryStartDrag(clientX: Double, clientY: Double) {
+        val rect = overlapArea?.getBoundingClientRect() ?: return
+        val localX = ((clientX - rect.left) / rect.width).coerceIn(0.0, 1.0) * OVERLAP_WIDTH
+        val localY = ((clientY - rect.top) / rect.height).coerceIn(0.0, 1.0) * OVERLAP_HEIGHT
+        val cueCenter = Point(OVERLAP_WIDTH / 2.0 + overlapOffset, OVERLAP_HEIGHT / 2.0 + 6.0)
+        if (distance(Point(localX, localY), cueCenter) <= OVERLAP_BALL_RADIUS * 1.05) {
+            dragging = true
+            updateOverlap(clientX)
+        }
+    }
+
     Column(
         Modifier
             .fillMaxWidth()
@@ -200,12 +211,20 @@ fun PoolTrainerScreen() {
                                 updateOverlap(event.clientX.toDouble())
                             }
                         }
+                        onMouseDown { event ->
+                            event.preventDefault()
+                            tryStartDrag(event.clientX.toDouble(), event.clientY.toDouble())
+                        }
                         onMouseUp { dragging = false }
                         onMouseLeave { dragging = false }
+                        onTouchStart { event ->
+                            event.preventDefault()
+                            firstTouchClientPosition(event)?.let { (x, y) -> tryStartDrag(x, y) }
+                        }
                         onTouchMove { event ->
                             if (dragging) {
                                 event.preventDefault()
-                                firstTouchClientX(event)?.let(::updateOverlap)
+                                firstTouchClientPosition(event)?.first?.let(::updateOverlap)
                             }
                         }
                         onTouchEnd { dragging = false }
@@ -217,14 +236,6 @@ fun PoolTrainerScreen() {
                     perfectOverlap = perfectOverlap,
                     submitted = submitted,
                     dragging = dragging,
-                    onCueMouseDown = { clientX ->
-                        dragging = true
-                        updateOverlap(clientX)
-                    },
-                    onCueTouchStart = { clientX ->
-                        dragging = true
-                        updateOverlap(clientX)
-                    },
                 )
             }
 
@@ -277,7 +288,7 @@ fun PoolTrainerScreen() {
         }
         val touchMoveListener: (dynamic) -> Unit = { event ->
             event.preventDefault()
-            firstTouchClientX(event)?.let(::updateOverlap)
+            firstTouchClientPosition(event)?.first?.let(::updateOverlap)
         }
         val upListener: (dynamic) -> Unit = {
             dragging = false
@@ -413,8 +424,6 @@ private fun OverlapTrainer(
     perfectOverlap: Double,
     submitted: Boolean,
     dragging: Boolean,
-    onCueMouseDown: (Double) -> Unit,
-    onCueTouchStart: (Double) -> Unit,
 ) {
     val objectCenter = Point(OVERLAP_WIDTH / 2.0, OVERLAP_HEIGHT / 2.0 + 6.0)
     val cueCenter = Point(objectCenter.x + overlapOffset, objectCenter.y)
@@ -476,16 +485,7 @@ private fun OverlapTrainer(
                     property("cursor", if (dragging) "grabbing" else "grab")
                 }
                 .zIndex(3)
-                .toAttrs {
-                    onMouseDown { event ->
-                        event.preventDefault()
-                        onCueMouseDown(event.clientX.toDouble())
-                    }
-                    onTouchStart { event ->
-                        event.preventDefault()
-                        firstTouchClientX(event)?.let(onCueTouchStart)
-                    }
-                }
+                .toAttrs()
         )
     }
 }
@@ -767,14 +767,20 @@ private fun formatSignedDegrees(value: Double): String {
 
 private fun flipVertically(point: Point): Point = Point(point.x, TABLE_HEIGHT - point.y)
 
-private fun firstTouchClientX(event: dynamic): Double? {
+private fun firstTouchClientPosition(event: dynamic): Pair<Double, Double>? {
     val touches = event.touches
     if (touches != null && touches.length as Int > 0) {
-        return (touches[0].clientX as Number).toDouble()
+        return Pair(
+            (touches[0].clientX as Number).toDouble(),
+            (touches[0].clientY as Number).toDouble(),
+        )
     }
     val changedTouches = event.changedTouches
     if (changedTouches != null && changedTouches.length as Int > 0) {
-        return (changedTouches[0].clientX as Number).toDouble()
+        return Pair(
+            (changedTouches[0].clientX as Number).toDouble(),
+            (changedTouches[0].clientY as Number).toDouble(),
+        )
     }
     return null
 }
