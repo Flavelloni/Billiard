@@ -202,6 +202,14 @@ fun PoolTrainerScreen() {
                         }
                         onMouseUp { dragging = false }
                         onMouseLeave { dragging = false }
+                        onTouchMove { event ->
+                            if (dragging) {
+                                event.preventDefault()
+                                firstTouchClientX(event)?.let(::updateOverlap)
+                            }
+                        }
+                        onTouchEnd { dragging = false }
+                        onTouchCancel { dragging = false }
                     }
             ) {
                 OverlapTrainer(
@@ -212,7 +220,11 @@ fun PoolTrainerScreen() {
                     onCueMouseDown = { clientX ->
                         dragging = true
                         updateOverlap(clientX)
-                    }
+                    },
+                    onCueTouchStart = { clientX ->
+                        dragging = true
+                        updateOverlap(clientX)
+                    },
                 )
             }
 
@@ -263,15 +275,28 @@ fun PoolTrainerScreen() {
         val moveListener: (dynamic) -> Unit = { event ->
             updateOverlap((event.clientX as Number).toDouble())
         }
+        val touchMoveListener: (dynamic) -> Unit = { event ->
+            event.preventDefault()
+            firstTouchClientX(event)?.let(::updateOverlap)
+        }
         val upListener: (dynamic) -> Unit = {
+            dragging = false
+        }
+        val touchEndListener: (dynamic) -> Unit = {
             dragging = false
         }
 
         window.addEventListener("mousemove", moveListener)
         window.addEventListener("mouseup", upListener)
+        window.addEventListener("touchmove", touchMoveListener, js("{ passive: false }"))
+        window.addEventListener("touchend", touchEndListener)
+        window.addEventListener("touchcancel", touchEndListener)
         onDispose {
             window.removeEventListener("mousemove", moveListener)
             window.removeEventListener("mouseup", upListener)
+            window.removeEventListener("touchmove", touchMoveListener)
+            window.removeEventListener("touchend", touchEndListener)
+            window.removeEventListener("touchcancel", touchEndListener)
         }
     }
 }
@@ -389,6 +414,7 @@ private fun OverlapTrainer(
     submitted: Boolean,
     dragging: Boolean,
     onCueMouseDown: (Double) -> Unit,
+    onCueTouchStart: (Double) -> Unit,
 ) {
     val objectCenter = Point(OVERLAP_WIDTH / 2.0, OVERLAP_HEIGHT / 2.0 + 6.0)
     val cueCenter = Point(objectCenter.x + overlapOffset, objectCenter.y)
@@ -454,6 +480,10 @@ private fun OverlapTrainer(
                     onMouseDown { event ->
                         event.preventDefault()
                         onCueMouseDown(event.clientX.toDouble())
+                    }
+                    onTouchStart { event ->
+                        event.preventDefault()
+                        firstTouchClientX(event)?.let(onCueTouchStart)
                     }
                 }
         )
@@ -736,3 +766,15 @@ private fun formatSignedDegrees(value: Double): String {
 }
 
 private fun flipVertically(point: Point): Point = Point(point.x, TABLE_HEIGHT - point.y)
+
+private fun firstTouchClientX(event: dynamic): Double? {
+    val touches = event.touches
+    if (touches != null && touches.length as Int > 0) {
+        return (touches[0].clientX as Number).toDouble()
+    }
+    val changedTouches = event.changedTouches
+    if (changedTouches != null && changedTouches.length as Int > 0) {
+        return (changedTouches[0].clientX as Number).toDouble()
+    }
+    return null
+}
