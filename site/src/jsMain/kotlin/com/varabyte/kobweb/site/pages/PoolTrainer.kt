@@ -39,6 +39,7 @@ import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.asin
 import kotlin.math.atan2
+import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
 import kotlin.random.Random
@@ -627,8 +628,7 @@ private fun BallLike(
 }
 
 private fun calculateShotLineEnd(setup: ShotSetup, cutAngleDegrees: Double): Point {
-    val cueToObject = normalized(setup.objectBall - setup.cueBall) ?: return setup.objectBall
-    val shotDirection = rotate(cueToObject, cutAngleDegrees)
+    val shotDirection = solveObjectBallDirection(setup.cueBall, setup.objectBall, cutAngleDegrees) ?: return setup.objectBall
     return rayToTableBounds(setup.objectBall, shotDirection)
 }
 
@@ -678,7 +678,6 @@ private fun generateShotSetup(random: Random = Random.Default): ShotSetup {
 }
 
 private fun evaluateShot(cueBall: Point, objectBall: Point, pocket: Pocket): ShotOption? {
-    val cueToObject = objectBall - cueBall
     val objectToPocket = pocket.center - objectBall
 
     if (distance(Point(0.0, 0.0), objectToPocket) < BALL_RADIUS * 4.0) return null
@@ -688,7 +687,10 @@ private fun evaluateShot(cueBall: Point, objectBall: Point, pocket: Pocket): Sho
 
     if (!isInsidePlayableArea(ghostBall)) return null
 
-    val cutAngleDegrees = signedAngleDegrees(cueToObject, objectToPocket)
+    val cueToGhost = ghostBall - cueBall
+    if (distance(Point(0.0, 0.0), cueToGhost) < 1e-6) return null
+
+    val cutAngleDegrees = signedAngleDegrees(cueToGhost, objectToPocket)
     if (cutAngleDegrees <= -90.0 || cutAngleDegrees >= 90.0) return null
 
     return ShotOption(pocket, cutAngleDegrees)
@@ -715,6 +717,25 @@ private fun signedAngleDegrees(from: Point, to: Point): Double {
     val cross = from.x * to.y - from.y * to.x
     val dot = from.x * to.x + from.y * to.y
     return atan2(cross, dot) * 180.0 / PI
+}
+
+private fun solveObjectBallDirection(cueBall: Point, objectBall: Point, cutAngleDegrees: Double): Point? {
+    val cueToObject = objectBall - cueBall
+    val distanceToObject = distance(cueBall, objectBall)
+    if (distanceToObject <= 1e-6) return null
+
+    val alphaRadians = cutAngleDegrees * PI / 180.0
+    val twoBallRadii = BALL_RADIUS * 2.0
+    val lateralOffset = twoBallRadii * sin(alphaRadians)
+    val longitudinalSquared = distanceToObject * distanceToObject - lateralOffset * lateralOffset
+    if (longitudinalSquared < 0.0) return null
+
+    val ghostDistanceFromCue = -twoBallRadii * cos(alphaRadians) + sqrt(longitudinalSquared)
+    val forwardComponent = ghostDistanceFromCue + twoBallRadii * cos(alphaRadians)
+    val rotationDegrees = atan2(lateralOffset, forwardComponent) * 180.0 / PI
+
+    val incomingDirection = rotate(normalized(cueToObject) ?: return null, -rotationDegrees)
+    return normalized(rotate(incomingDirection, cutAngleDegrees))
 }
 
 private fun rotate(vector: Point, angleDegrees: Double): Point {
