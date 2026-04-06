@@ -99,12 +99,12 @@ fun PoolTrainerScreen() {
     var setup by remember { mutableStateOf(generateShotSetup()) }
     val perfectOverlap = remember(setup) { overlapOffsetFromAngle(setup.target.cutAngleDegrees, OVERLAP_BALL_RADIUS) }
 
-    var overlapOffset by remember(setup.id) { mutableStateOf(-OVERLAP_BALL_RADIUS * 2.0) }
+    val overlapOffsetState = remember(setup.id) { mutableStateOf(-OVERLAP_BALL_RADIUS * 2.0) }
+    var overlapOffset by overlapOffsetState
     var submitted by remember(setup.id) { mutableStateOf(false) }
     var overlapArea by remember { mutableStateOf<HTMLElement?>(null) }
-    var dragging by remember(setup.id) { mutableStateOf(false) }
-    val currentOverlapOffset by rememberUpdatedState(overlapOffset)
-    val currentDragging by rememberUpdatedState(dragging)
+    val draggingState = remember(setup.id) { mutableStateOf(false) }
+    var dragging by draggingState
 
     val userCutAngle = overlapOffsetToAngle(overlapOffset, OVERLAP_BALL_RADIUS)
     val angleError = userCutAngle - setup.target.cutAngleDegrees
@@ -119,8 +119,9 @@ fun PoolTrainerScreen() {
         val rect = overlapArea?.getBoundingClientRect() ?: return
         val localX = ((clientX - rect.left) / rect.width).coerceIn(0.0, 1.0) * OVERLAP_WIDTH
         val localY = ((clientY - rect.top) / rect.height).coerceIn(0.0, 1.0) * OVERLAP_HEIGHT
-        val cueCenter = Point(OVERLAP_WIDTH / 2.0 + currentOverlapOffset, OVERLAP_HEIGHT / 2.0 + 6.0)
+        val cueCenter = Point(OVERLAP_WIDTH / 2.0 + overlapOffsetState.value, OVERLAP_HEIGHT / 2.0 + 6.0)
         if (distance(Point(localX, localY), cueCenter) <= OVERLAP_BALL_RADIUS * 1.05) {
+            draggingState.value = true
             dragging = true
             updateOverlap(clientX)
         }
@@ -209,12 +210,13 @@ fun PoolTrainerScreen() {
                                 firstTouchClientPosition(event)?.let { (x, y) -> tryStartDrag(x, y) }
                             }
                             val touchMove: (dynamic) -> Unit = { event ->
-                                if (currentDragging) {
+                                if (draggingState.value) {
                                     event.preventDefault()
                                     firstTouchClientPosition(event)?.first?.let(::updateOverlap)
                                 }
                             }
                             val touchEnd: (dynamic) -> Unit = {
+                                draggingState.value = false
                                 dragging = false
                             }
 
@@ -241,8 +243,14 @@ fun PoolTrainerScreen() {
                                 updateOverlap(event.clientX.toDouble())
                             }
                         }
-                        onMouseUp { dragging = false }
-                        onMouseLeave { dragging = false }
+                        onMouseUp {
+                            draggingState.value = false
+                            dragging = false
+                        }
+                        onMouseLeave {
+                            draggingState.value = false
+                            dragging = false
+                        }
                     }
             ) {
                 OverlapTrainer(
