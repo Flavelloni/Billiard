@@ -21,7 +21,6 @@ import com.varabyte.kobweb.site.components.layouts.PageLayoutData
 import com.varabyte.kobweb.site.components.style.MutedSpanTextVariant
 import com.varabyte.kobweb.site.components.style.SiteTextSize
 import com.varabyte.kobweb.site.components.style.siteText
-import kotlinx.browser.window
 import org.jetbrains.compose.web.css.FlexWrap
 import org.jetbrains.compose.web.css.LineStyle
 import org.jetbrains.compose.web.css.Position
@@ -99,12 +98,10 @@ fun PoolTrainerScreen() {
     var setup by remember { mutableStateOf(generateShotSetup()) }
     val perfectOverlap = remember(setup) { overlapOffsetFromAngle(setup.target.cutAngleDegrees, OVERLAP_BALL_RADIUS) }
 
-    val overlapOffsetState = remember(setup.id) { mutableStateOf(-OVERLAP_BALL_RADIUS * 2.0) }
-    var overlapOffset by overlapOffsetState
+    var overlapOffset by remember(setup.id) { mutableStateOf(-OVERLAP_BALL_RADIUS * 2.0) }
     var submitted by remember(setup.id) { mutableStateOf(false) }
     var overlapArea by remember { mutableStateOf<HTMLElement?>(null) }
-    val draggingState = remember(setup.id) { mutableStateOf(false) }
-    var dragging by draggingState
+    var dragging by remember(setup.id) { mutableStateOf(false) }
 
     val userCutAngle = overlapOffsetToAngle(overlapOffset, OVERLAP_BALL_RADIUS)
     val angleError = userCutAngle - setup.target.cutAngleDegrees
@@ -119,9 +116,8 @@ fun PoolTrainerScreen() {
         val rect = overlapArea?.getBoundingClientRect() ?: return
         val localX = ((clientX - rect.left) / rect.width).coerceIn(0.0, 1.0) * OVERLAP_WIDTH
         val localY = ((clientY - rect.top) / rect.height).coerceIn(0.0, 1.0) * OVERLAP_HEIGHT
-        val cueCenter = Point(OVERLAP_WIDTH / 2.0 + overlapOffsetState.value, OVERLAP_HEIGHT / 2.0 + 6.0)
+        val cueCenter = Point(OVERLAP_WIDTH / 2.0 + overlapOffset, OVERLAP_HEIGHT / 2.0 + 6.0)
         if (distance(Point(localX, localY), cueCenter) <= OVERLAP_BALL_RADIUS * 1.05) {
-            draggingState.value = true
             dragging = true
             updateOverlap(clientX)
         }
@@ -146,7 +142,7 @@ fun PoolTrainerScreen() {
                 Text("Billiards Trainer")
             }
             SpanText(
-                "Study the random table, read the cut from the highlighted pocket, then build the cue-ball overlap below. No guide lines are shown. The side of the overlap matters.",
+                "Study the random table, read the cut from the highlighted pocket, then build the cue-ball overlap below.",
                 Modifier.maxWidth(75.cssRem).siteText(SiteTextSize.NORMAL),
                 MutedSpanTextVariant
             )
@@ -204,33 +200,8 @@ fun PoolTrainerScreen() {
                     .toAttrs {
                         ref { element ->
                             overlapArea = element
-
-                            val touchStart: (dynamic) -> Unit = { event ->
-                                event.preventDefault()
-                                firstTouchClientPosition(event)?.let { (x, y) -> tryStartDrag(x, y) }
-                            }
-                            val touchMove: (dynamic) -> Unit = { event ->
-                                if (draggingState.value) {
-                                    event.preventDefault()
-                                    firstTouchClientPosition(event)?.first?.let(::updateOverlap)
-                                }
-                            }
-                            val touchEnd: (dynamic) -> Unit = {
-                                draggingState.value = false
-                                dragging = false
-                            }
-
-                            element.addEventListener("touchstart", touchStart, js("{ passive: false }"))
-                            window.addEventListener("touchmove", touchMove, js("{ passive: false }"))
-                            window.addEventListener("touchend", touchEnd)
-                            window.addEventListener("touchcancel", touchEnd)
-
                             onDispose {
                                 if (overlapArea == element) overlapArea = null
-                                element.removeEventListener("touchstart", touchStart)
-                                window.removeEventListener("touchmove", touchMove)
-                                window.removeEventListener("touchend", touchEnd)
-                                window.removeEventListener("touchcancel", touchEnd)
                             }
                         }
                         onMouseDown { event ->
@@ -243,14 +214,20 @@ fun PoolTrainerScreen() {
                                 updateOverlap(event.clientX.toDouble())
                             }
                         }
-                        onMouseUp {
-                            draggingState.value = false
-                            dragging = false
+                        onMouseUp { dragging = false }
+                        onMouseLeave { dragging = false }
+                        onTouchStart { event ->
+                            event.preventDefault()
+                            firstTouchClientPosition(event)?.let { (x, y) -> tryStartDrag(x, y) }
                         }
-                        onMouseLeave {
-                            draggingState.value = false
-                            dragging = false
+                        onTouchMove { event ->
+                            if (dragging) {
+                                event.preventDefault()
+                                firstTouchClientPosition(event)?.first?.let(::updateOverlap)
+                            }
                         }
+                        onTouchEnd { dragging = false }
+                        onTouchCancel { dragging = false }
                     }
             ) {
                 OverlapTrainer(
