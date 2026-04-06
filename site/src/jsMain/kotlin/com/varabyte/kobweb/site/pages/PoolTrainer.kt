@@ -303,12 +303,12 @@ private fun PoolTable(setup: ShotSetup, shownCutAngle: Double?) {
         attrs = Modifier
             .fillMaxWidth()
             .styleModifier { property("aspect-ratio", "${TABLE_WIDTH / TABLE_HEIGHT}") }
-            .borderRadius(32.px)
-            .padding(22.px)
             .backgroundColor(Color.rgb(80, 43, 18))
             .position(Position.Relative)
             .overflow(Overflow.Hidden)
             .styleModifier {
+                property("padding", "clamp(10px, 2.2vw, 22px)")
+                property("border-radius", "clamp(18px, 4vw, 32px)")
                 property("box-shadow", "inset 0 0 0 2px rgba(255, 228, 166, 0.18), inset 0 18px 36px rgba(255, 255, 255, 0.06), 0 18px 40px rgba(0, 0, 0, 0.3)")
                 property("background-image", "linear-gradient(145deg, rgba(122,76,34,0.92), rgba(67,34,11,0.94))")
             }
@@ -317,11 +317,11 @@ private fun PoolTable(setup: ShotSetup, shownCutAngle: Double?) {
         Div(
             attrs = Modifier
                 .fillMaxSize()
-                .borderRadius(22.px)
                 .position(Position.Relative)
                 .overflow(Overflow.Hidden)
                 .backgroundColor(Color.rgb(21, 93, 58))
                 .styleModifier {
+                    property("border-radius", "clamp(12px, 3vw, 22px)")
                     property("background-image", "radial-gradient(circle at 30% 20%, rgba(77, 173, 112, 0.28), transparent 38%), linear-gradient(180deg, rgba(17, 101, 62, 0.98), rgba(10, 73, 44, 0.98))")
                 }
                 .toAttrs()
