@@ -127,7 +127,12 @@ fun NavHeader() {
                         .borderRadius(999.px)
                         .toAttrs {
                             style { property("cursor", "pointer") }
+                            style { property("touch-action", "manipulation") }
                             onClick { colorMode = colorMode.opposite }
+                            onTouchStart {
+                                it.preventDefault()
+                                colorMode = colorMode.opposite
+                            }
                         }
                 ) {
                     when (colorMode) {

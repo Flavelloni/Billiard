@@ -478,9 +478,14 @@ private fun ActionButton(label: String, onActivate: () -> Unit) {
             .styleModifier {
                 property("cursor", "pointer")
                 property("user-select", "none")
+                property("touch-action", "manipulation")
             }
             .toAttrs {
                 onClick { onActivate() }
+                onTouchStart {
+                    it.preventDefault()
+                    onActivate()
+                }
             }
     ) {
         Text(label)
