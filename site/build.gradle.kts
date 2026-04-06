@@ -25,10 +25,10 @@ kobweb {
             head.add {
                 link {
                     rel = "stylesheet"
-                    href = "/prism/prism.css"
+                    href = basePath.prependTo("/prism/prism.css")
                 }
                 script {
-                    src = "/prism/prism.js"
+                    src = basePath.prependTo("/prism/prism.js")
                 }
                 link {
                     rel = "stylesheet"

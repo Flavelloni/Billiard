@@ -517,8 +517,9 @@ private fun ResultPanel(
     val feedback = when {
         absError < 0.5 -> "Dead on."
         absError < 2.0 -> "Very close."
-        absError < 5.0 -> "Not bad."
-        else -> "The overlap side or amount was clearly off."
+        absError < 12.0 -> "Not bad."
+        absError < 20 -> "That was a bit off."
+        else -> "That was clearly off."
     }
 
     val directionalMiss = when {
