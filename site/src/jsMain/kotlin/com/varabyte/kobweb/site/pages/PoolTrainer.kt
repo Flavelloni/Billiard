@@ -379,6 +379,7 @@ private fun ShotLine(
     fieldWidth: Double,
     fieldHeight: Double,
 ) {
+    val lineThickness = 4.0
     val dx = end.x - start.x
     val dy = end.y - start.y
     val length = sqrt(dx * dx + dy * dy)
@@ -388,15 +389,15 @@ private fun ShotLine(
         attrs = Modifier
             .position(Position.Absolute)
             .left((start.x / fieldWidth * 100).percent)
-            .top((start.y / fieldHeight * 100).percent)
+            .top((((start.y - lineThickness / 2.0) / fieldHeight) * 100).percent)
             .width((length / fieldWidth * 100).percent)
-            .height(4.px)
+            .height(lineThickness.px)
             .backgroundColor(Color.rgba(255, 232, 171, 0.92f))
             .borderRadius(999.px)
             .zIndex(1)
             .styleModifier {
                 property("transform", "rotate(${angle}deg)")
-                property("transform-origin", "0 0")
+                property("transform-origin", "0 50%")
                 property("box-shadow", "0 0 12px rgba(255, 226, 139, 0.72)")
             }
             .toAttrs()
