@@ -74,9 +74,19 @@ jobs:
       - name: Assemble publish directory
         run: |
           mkdir -p site/.kobweb/publish
-          cp -r site/.kobweb/site/system/. site/.kobweb/publish/
-          cp -r site/.kobweb/site/resources/. site/.kobweb/publish/
-          cp -r site/.kobweb/site/pages/. site/.kobweb/publish/
+
+          if [[ -d site/.kobweb/site/system && -d site/.kobweb/site/resources && -d site/.kobweb/site/pages ]]; then
+            cp -r site/.kobweb/site/system/. site/.kobweb/publish/
+            cp -r site/.kobweb/site/resources/. site/.kobweb/publish/
+            cp -r site/.kobweb/site/pages/. site/.kobweb/publish/
+          elif [[ -f site/.kobweb/site/index.html ]]; then
+            cp -r site/.kobweb/site/. site/.kobweb/publish/
+          else
+            echo "Unexpected Kobweb export layout"
+            find site/.kobweb -maxdepth 3 -mindepth 1 | sort
+            exit 1
+          fi
+
           cp site/.kobweb/publish/index.html site/.kobweb/publish/404.html
 
       - name: Upload artifact
