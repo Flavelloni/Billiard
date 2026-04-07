@@ -47,10 +47,18 @@ import kotlin.random.Random
 private const val TABLE_WIDTH = 1000.0
 private const val TABLE_HEIGHT = 560.0
 private const val BALL_RADIUS = 20.0
+private const val MOBILE_TABLE_BALL_RADIUS = 24.0
 private const val POCKET_RADIUS = 34.0
+private const val CORNER_POCKET_TARGET_INSET = 28.0
+private const val SIDE_POCKET_TARGET_INSET = 12.0
+private const val MAX_REQUIRED_CUT_ANGLE = 60.0
 private const val OVERLAP_WIDTH = 620.0
 private const val OVERLAP_HEIGHT = 280.0
 private const val OVERLAP_BALL_RADIUS = 68.0
+private const val MOBILE_OVERLAP_BALL_RADIUS = 82.0
+private const val MOBILE_BREAKPOINT_PX = 768
+private const val CUE_BALL_ALPHA = 0.82f
+private const val TABLE_RAIL_PADDING = "clamp(10px, 2.2vw, 22px)"
 
 private data class Point(val x: Double, val y: Double) {
     operator fun plus(other: Point) = Point(x + other.x, y + other.y)
@@ -58,7 +66,11 @@ private data class Point(val x: Double, val y: Double) {
     operator fun times(scale: Double) = Point(x * scale, y * scale)
 }
 
-private data class Pocket(val label: String, val center: Point)
+private data class Pocket(
+    val label: String,
+    val renderCenter: Point,
+    val aimPoint: Point,
+)
 
 private data class ShotOption(
     val pocket: Pocket,
@@ -73,15 +85,17 @@ private data class ShotSetup(
 )
 
 private val pockets = listOf(
-    Pocket("Top left", Point(0.0, 0.0)),
-    Pocket("Top middle", Point(TABLE_WIDTH / 2.0, 0.0)),
-    Pocket("Top right", Point(TABLE_WIDTH, 0.0)),
-    Pocket("Bottom left", Point(0.0, TABLE_HEIGHT)),
-    Pocket("Bottom middle", Point(TABLE_WIDTH / 2.0, TABLE_HEIGHT)),
-    Pocket("Bottom right", Point(TABLE_WIDTH, TABLE_HEIGHT)),
+    Pocket("Top left", Point(0.0, 0.0), Point(CORNER_POCKET_TARGET_INSET, CORNER_POCKET_TARGET_INSET)),
+    Pocket("Top middle", Point(TABLE_WIDTH / 2.0, 0.0), Point(TABLE_WIDTH / 2.0, SIDE_POCKET_TARGET_INSET)),
+    Pocket("Top right", Point(TABLE_WIDTH, 0.0), Point(TABLE_WIDTH - CORNER_POCKET_TARGET_INSET, CORNER_POCKET_TARGET_INSET)),
+    Pocket("Bottom left", Point(0.0, TABLE_HEIGHT), Point(CORNER_POCKET_TARGET_INSET, TABLE_HEIGHT - CORNER_POCKET_TARGET_INSET)),
+    Pocket("Bottom middle", Point(TABLE_WIDTH / 2.0, TABLE_HEIGHT), Point(TABLE_WIDTH / 2.0, TABLE_HEIGHT - SIDE_POCKET_TARGET_INSET)),
+    Pocket("Bottom right", Point(TABLE_WIDTH, TABLE_HEIGHT), Point(TABLE_WIDTH - CORNER_POCKET_TARGET_INSET, TABLE_HEIGHT - CORNER_POCKET_TARGET_INSET)),
 )
 
 private val topPockets = pockets.take(3)
+private val longRailDiamondFractions = listOf(1, 2, 3, 5, 6, 7).map { it / 8.0 }
+private val shortRailDiamondFractions = (1..3).map { it / 4.0 }
 
 @InitRoute
 fun initPoolTrainerPage(ctx: InitRouteContext) {
@@ -97,23 +111,28 @@ fun PoolTrainerPage() {
 
 @Composable
 fun PoolTrainerScreen() {
+    val isMobile = rememberIsMobileLayout()
+    val tableBallRadius = if (isMobile) MOBILE_TABLE_BALL_RADIUS else BALL_RADIUS
+    val overlapBallRadius = if (isMobile) MOBILE_OVERLAP_BALL_RADIUS else OVERLAP_BALL_RADIUS
     var setup by remember { mutableStateOf(generateShotSetup()) }
-    val perfectOverlap = remember(setup) { overlapOffsetFromAngle(setup.target.cutAngleDegrees, OVERLAP_BALL_RADIUS) }
+    val perfectOverlap = remember(setup, overlapBallRadius) {
+        overlapOffsetFromAngle(setup.target.cutAngleDegrees, overlapBallRadius)
+    }
 
-    val overlapOffsetState = remember(setup.id) { mutableStateOf(-OVERLAP_BALL_RADIUS * 2.0) }
+    val overlapOffsetState = remember(setup.id, isMobile) { mutableStateOf(-overlapBallRadius * 2.0) }
     var overlapOffset by overlapOffsetState
     var submitted by remember(setup.id) { mutableStateOf(false) }
     var overlapArea by remember { mutableStateOf<HTMLElement?>(null) }
     val draggingState = remember(setup.id) { mutableStateOf(false) }
     var dragging by draggingState
 
-    val userCutAngle = overlapOffsetToAngle(overlapOffset, OVERLAP_BALL_RADIUS)
+    val userCutAngle = overlapOffsetToAngle(overlapOffset, overlapBallRadius)
     val angleError = userCutAngle - setup.target.cutAngleDegrees
 
     fun updateOverlap(clientX: Double) {
         val rect = overlapArea?.getBoundingClientRect() ?: return
         val localX = ((clientX - rect.left) / rect.width).coerceIn(0.0, 1.0) * OVERLAP_WIDTH
-        overlapOffset = (localX - OVERLAP_WIDTH / 2.0).coerceIn(-OVERLAP_BALL_RADIUS * 2.0, OVERLAP_BALL_RADIUS * 2.0)
+        overlapOffset = (localX - OVERLAP_WIDTH / 2.0).coerceIn(-overlapBallRadius * 2.0, overlapBallRadius * 2.0)
     }
 
     fun tryStartDrag(clientX: Double, clientY: Double) {
@@ -121,7 +140,7 @@ fun PoolTrainerScreen() {
         val localX = ((clientX - rect.left) / rect.width).coerceIn(0.0, 1.0) * OVERLAP_WIDTH
         val localY = ((clientY - rect.top) / rect.height).coerceIn(0.0, 1.0) * OVERLAP_HEIGHT
         val cueCenter = Point(OVERLAP_WIDTH / 2.0 + overlapOffsetState.value, OVERLAP_HEIGHT / 2.0 + 6.0)
-        if (distance(Point(localX, localY), cueCenter) <= OVERLAP_BALL_RADIUS * 1.05) {
+        if (distance(Point(localX, localY), cueCenter) <= overlapBallRadius * 1.05) {
             draggingState.value = true
             dragging = true
             updateOverlap(clientX)
@@ -166,7 +185,11 @@ fun PoolTrainerScreen() {
                 }
                 .gap(1.25.cssRem)
         ) {
-            PoolTable(setup, if (submitted) userCutAngle else null)
+            PoolTable(
+                setup = setup,
+                shownCutAngle = if (submitted) userCutAngle else null,
+                ballRadius = tableBallRadius,
+            )
 
             /*Row(
                 Modifier
@@ -259,6 +282,7 @@ fun PoolTrainerScreen() {
                         perfectOverlap = perfectOverlap,
                         submitted = submitted,
                         dragging = dragging,
+                        ballRadius = overlapBallRadius,
                     )
                 }
             }
@@ -298,7 +322,24 @@ fun PoolTrainerScreen() {
 }
 
 @Composable
-private fun PoolTable(setup: ShotSetup, shownCutAngle: Double?) {
+private fun rememberIsMobileLayout(): Boolean {
+    var isMobile by remember { mutableStateOf(window.innerWidth <= MOBILE_BREAKPOINT_PX) }
+
+    DisposableEffect(Unit) {
+        val listener: (dynamic) -> Unit = {
+            isMobile = window.innerWidth <= MOBILE_BREAKPOINT_PX
+        }
+        window.addEventListener("resize", listener)
+        onDispose {
+            window.removeEventListener("resize", listener)
+        }
+    }
+
+    return isMobile
+}
+
+@Composable
+private fun PoolTable(setup: ShotSetup, shownCutAngle: Double?, ballRadius: Double) {
     val shotLineEnd = shownCutAngle?.let { calculateShotLineEnd(setup, it) }
     Div(
         attrs = Modifier
@@ -308,13 +349,22 @@ private fun PoolTable(setup: ShotSetup, shownCutAngle: Double?) {
             .position(Position.Relative)
             .overflow(Overflow.Hidden)
             .styleModifier {
-                property("padding", "clamp(10px, 2.2vw, 22px)")
+                property("padding", TABLE_RAIL_PADDING)
                 property("border-radius", "clamp(18px, 4vw, 32px)")
                 property("box-shadow", "inset 0 0 0 2px rgba(255, 228, 166, 0.18), inset 0 18px 36px rgba(255, 255, 255, 0.06), 0 18px 40px rgba(0, 0, 0, 0.3)")
                 property("background-image", "linear-gradient(145deg, rgba(122,76,34,0.92), rgba(67,34,11,0.94))")
             }
             .toAttrs()
     ) {
+        longRailDiamondFractions.forEach { fraction ->
+            TableDiamond(RailSide.Top, fraction)
+            TableDiamond(RailSide.Bottom, fraction)
+        }
+        shortRailDiamondFractions.forEach { fraction ->
+            TableDiamond(RailSide.Left, fraction)
+            TableDiamond(RailSide.Right, fraction)
+        }
+
         Div(
             attrs = Modifier
                 .fillMaxSize()
@@ -339,7 +389,7 @@ private fun PoolTable(setup: ShotSetup, shownCutAngle: Double?) {
             pockets.forEach { pocket ->
                 val isTarget = pocket == setup.target.pocket
                 BallLike(
-                    center = pocket.center,
+                    center = pocket.renderCenter,
                     radius = POCKET_RADIUS,
                     fieldWidth = TABLE_WIDTH,
                     fieldHeight = TABLE_HEIGHT,
@@ -351,7 +401,7 @@ private fun PoolTable(setup: ShotSetup, shownCutAngle: Double?) {
 
             BallLike(
                 center = setup.objectBall,
-                radius = BALL_RADIUS,
+                radius = ballRadius,
                 fieldWidth = TABLE_WIDTH,
                 fieldHeight = TABLE_HEIGHT,
                 fill = Color.rgb(201, 43, 43),
@@ -361,15 +411,58 @@ private fun PoolTable(setup: ShotSetup, shownCutAngle: Double?) {
 
             BallLike(
                 center = setup.cueBall,
-                radius = BALL_RADIUS,
+                radius = ballRadius,
                 fieldWidth = TABLE_WIDTH,
                 fieldHeight = TABLE_HEIGHT,
-                fill = Color.rgb(244, 244, 239),
+                fill = Color.rgba(244, 244, 239, CUE_BALL_ALPHA),
                 borderColor = Color.rgba(255, 255, 255, 0.92f),
                 glow = "0 10px 20px rgba(0, 0, 0, 0.2), inset 0 8px 14px rgba(255,255,255,0.72)",
             )
         }
     }
+}
+
+private enum class RailSide {
+    Top,
+    Right,
+    Bottom,
+    Left,
+}
+
+@Composable
+private fun TableDiamond(side: RailSide, fraction: Double) {
+    Div(
+        attrs = Modifier
+            .position(Position.Absolute)
+            .width(9.px)
+            .height(9.px)
+            .backgroundColor(Color.rgba(246, 221, 174, 0.86f))
+            .border(1.px, LineStyle.Solid, Color.rgba(104, 64, 24, 0.45f))
+            .styleModifier {
+                when (side) {
+                    RailSide.Top -> {
+                        property("left", "${fraction * 100}%")
+                        property("top", "calc($TABLE_RAIL_PADDING / 2)")
+                    }
+                    RailSide.Bottom -> {
+                        property("left", "${fraction * 100}%")
+                        property("top", "calc(100% - ($TABLE_RAIL_PADDING / 2))")
+                    }
+                    RailSide.Left -> {
+                        property("left", "calc($TABLE_RAIL_PADDING / 2)")
+                        property("top", "${fraction * 100}%")
+                    }
+                    RailSide.Right -> {
+                        property("left", "calc(100% - ($TABLE_RAIL_PADDING / 2))")
+                        property("top", "${fraction * 100}%")
+                    }
+                }
+                property("transform", "translate(-50%, -50%) rotate(45deg)")
+                property("box-shadow", "0 1px 4px rgba(0, 0, 0, 0.22)")
+                property("pointer-events", "none")
+            }
+            .toAttrs()
+    )
 }
 
 @Composable
@@ -410,6 +503,7 @@ private fun OverlapTrainer(
     perfectOverlap: Double,
     submitted: Boolean,
     dragging: Boolean,
+    ballRadius: Double,
 ) {
     val objectCenter = Point(OVERLAP_WIDTH / 2.0, OVERLAP_HEIGHT / 2.0 + 6.0)
     val cueCenter = Point(objectCenter.x + overlapOffset, objectCenter.y)
@@ -433,7 +527,7 @@ private fun OverlapTrainer(
     ) {
         BallLike(
             center = objectCenter,
-            radius = OVERLAP_BALL_RADIUS,
+            radius = ballRadius,
             fieldWidth = OVERLAP_WIDTH,
             fieldHeight = OVERLAP_HEIGHT,
             fill = Color.rgb(201, 43, 43),
@@ -445,7 +539,7 @@ private fun OverlapTrainer(
         if (submitted) {
             BallLike(
                 center = perfectCenter,
-                radius = OVERLAP_BALL_RADIUS,
+                radius = ballRadius,
                 fieldWidth = OVERLAP_WIDTH,
                 fieldHeight = OVERLAP_HEIGHT,
                 fill = Color.rgba(241, 197, 79, 0.24f),
@@ -459,13 +553,13 @@ private fun OverlapTrainer(
         Div(
             attrs = Modifier
                 .position(Position.Absolute)
-                .left((((cueCenter.x - OVERLAP_BALL_RADIUS) / OVERLAP_WIDTH) * 100).percent)
-                .top((((cueCenter.y - OVERLAP_BALL_RADIUS) / OVERLAP_HEIGHT) * 100).percent)
-                .width(((OVERLAP_BALL_RADIUS * 2.0 / OVERLAP_WIDTH) * 100).percent)
+                .left((((cueCenter.x - ballRadius) / OVERLAP_WIDTH) * 100).percent)
+                .top((((cueCenter.y - ballRadius) / OVERLAP_HEIGHT) * 100).percent)
+                .width(((ballRadius * 2.0 / OVERLAP_WIDTH) * 100).percent)
                 .styleModifier { property("aspect-ratio", "1") }
                 .borderRadius(50.percent)
                 .border(2.px, LineStyle.Solid, Color.rgba(255, 255, 255, 0.9f))
-                .backgroundColor(if (submitted) Color.rgba(244, 244, 239, 0.82f) else Color.rgb(244, 244, 239))
+                .backgroundColor(Color.rgba(244, 244, 239, CUE_BALL_ALPHA))
                 .styleModifier {
                     property("box-shadow", "0 12px 24px rgba(0, 0, 0, 0.24), inset 0 10px 18px rgba(255,255,255,0.75)")
                     property("cursor", if (dragging) "grabbing" else "grab")
@@ -630,7 +724,7 @@ private fun BallLike(
 
 private fun calculateShotLineEnd(setup: ShotSetup, cutAngleDegrees: Double): Point {
     val shotDirection = solveObjectBallDirection(setup.cueBall, setup.objectBall, cutAngleDegrees) ?: return setup.objectBall
-    return rayToTableBounds(setup.objectBall, shotDirection)
+    return rayToPocketOrTableBounds(setup.objectBall, shotDirection, setup.target.pocket)
 }
 
 private fun generateShotSetup(random: Random = Random.Default): ShotSetup {
@@ -679,7 +773,7 @@ private fun generateShotSetup(random: Random = Random.Default): ShotSetup {
 }
 
 private fun evaluateShot(cueBall: Point, objectBall: Point, pocket: Pocket): ShotOption? {
-    val objectToPocket = pocket.center - objectBall
+    val objectToPocket = pocket.aimPoint - objectBall
 
     if (distance(Point(0.0, 0.0), objectToPocket) < BALL_RADIUS * 4.0) return null
 
@@ -693,6 +787,7 @@ private fun evaluateShot(cueBall: Point, objectBall: Point, pocket: Pocket): Sho
 
     val cutAngleDegrees = signedAngleDegrees(cueToGhost, objectToPocket)
     if (cutAngleDegrees <= -90.0 || cutAngleDegrees >= 90.0) return null
+    if (abs(cutAngleDegrees) >= MAX_REQUIRED_CUT_ANGLE) return null
 
     return ShotOption(pocket, cutAngleDegrees)
 }
@@ -714,10 +809,11 @@ private fun distance(a: Point, b: Point): Double {
     return sqrt(dx * dx + dy * dy)
 }
 
+private fun dot(a: Point, b: Point): Double = a.x * b.x + a.y * b.y
+
 private fun signedAngleDegrees(from: Point, to: Point): Double {
     val cross = from.x * to.y - from.y * to.x
-    val dot = from.x * to.x + from.y * to.y
-    return atan2(cross, dot) * 180.0 / PI
+    return atan2(cross, dot(from, to)) * 180.0 / PI
 }
 
 private fun solveObjectBallDirection(cueBall: Point, objectBall: Point, cutAngleDegrees: Double): Point? {
@@ -762,6 +858,25 @@ private fun rayToTableBounds(origin: Point, direction: Point): Point {
         x = (origin.x + direction.x * t).coerceIn(0.0, TABLE_WIDTH),
         y = (origin.y + direction.y * t).coerceIn(0.0, TABLE_HEIGHT),
     )
+}
+
+private fun rayToPocketOrTableBounds(origin: Point, direction: Point, pocket: Pocket): Point {
+    val normalizedDirection = normalized(direction) ?: return origin
+    return rayToCircle(origin, normalizedDirection, pocket.renderCenter, POCKET_RADIUS) ?: rayToTableBounds(origin, normalizedDirection)
+}
+
+private fun rayToCircle(origin: Point, direction: Point, center: Point, radius: Double): Point? {
+    val offset = origin - center
+    val b = 2.0 * dot(direction, offset)
+    val c = dot(offset, offset) - radius * radius
+    val discriminant = b * b - 4.0 * c
+    if (discriminant < 0.0) return null
+
+    val sqrtDiscriminant = sqrt(discriminant)
+    val firstT = (-b - sqrtDiscriminant) / 2.0
+    val secondT = (-b + sqrtDiscriminant) / 2.0
+    val t = listOf(firstT, secondT).filter { it > 0.0 }.minOrNull() ?: return null
+    return origin + direction * t
 }
 
 private fun overlapOffsetFromAngle(angleDegrees: Double, ballRadius: Double): Double {

@@ -23,12 +23,14 @@ import com.varabyte.kobweb.silk.style.common.SmoothColorStyle
 import com.varabyte.kobweb.silk.style.layer.SilkLayer
 import com.varabyte.kobweb.silk.style.toModifier
 import com.varabyte.kobweb.silk.theme.colors.ColorMode
+import com.varabyte.kobweb.navigation.BasePath
 import com.varabyte.kobweb.site.components.sections.NavHeaderHeight
 import com.varabyte.kobweb.site.components.sections.listing.MobileNavHeight
 import com.varabyte.kobweb.site.components.style.DividerColor
 import kotlinx.browser.document
 import kotlinx.browser.localStorage
 import org.jetbrains.compose.web.css.*
+import org.w3c.dom.HTMLLinkElement
 
 private val COLOR_MODE_KEY = ColorMode.entries.createStorageKey("app:colorMode")
 
@@ -136,6 +138,26 @@ fun initSilk(ctx: InitSilkContext) {
 fun AppEntry(content: @Composable () -> Unit) {
     SilkApp {
         val colorMode = ColorMode.current
+        LaunchedEffect(Unit) {
+            val faviconHref = BasePath.prependTo("/images/pool-ball-icon.svg?v=2")
+            val iconLinks = document.head?.querySelectorAll("link[rel~='icon']")
+
+            if (iconLinks != null && iconLinks.length > 0) {
+                for (index in 0 until iconLinks.length) {
+                    val link = iconLinks.item(index) as? HTMLLinkElement ?: continue
+                    link.setAttribute("href", faviconHref)
+                    link.setAttribute("type", "image/svg+xml")
+                }
+            } else {
+                document.head?.appendChild(
+                    document.createElement("link").apply {
+                        setAttribute("rel", "icon")
+                        setAttribute("href", faviconHref)
+                        setAttribute("type", "image/svg+xml")
+                    }
+                )
+            }
+        }
         LaunchedEffect(colorMode) {
             localStorage.setItem(COLOR_MODE_KEY, colorMode)
         }

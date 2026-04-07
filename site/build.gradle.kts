@@ -23,6 +23,38 @@ kobweb {
     app {
         index {
             head.add {
+                script {
+                    text(
+                        """
+                        (() => {
+                          const faviconHref = '${'$'}{basePath.prependTo("/images/pool-ball-icon.svg?v=2")}';
+                          const links = document.head.querySelectorAll("link[rel~='icon']");
+                          links.forEach((link) => {
+                            link.setAttribute("href", faviconHref);
+                            link.setAttribute("type", "image/svg+xml");
+                          });
+                          if (links.length === 0) {
+                            const link = document.createElement("link");
+                            link.setAttribute("rel", "icon");
+                            link.setAttribute("href", faviconHref);
+                            link.setAttribute("type", "image/svg+xml");
+                            document.head.appendChild(link);
+                          }
+                        })();
+                        """.trimIndent()
+                    )
+                }
+                link {
+                    rel = "icon"
+                    href = basePath.prependTo("/images/pool-ball-icon.svg?v=2")
+                    attributes["type"] = "image/svg+xml"
+                    attributes["sizes"] = "any"
+                }
+                link {
+                    rel = "shortcut icon"
+                    href = basePath.prependTo("/images/pool-ball-icon.svg?v=2")
+                    attributes["type"] = "image/svg+xml"
+                }
                 link {
                     rel = "stylesheet"
                     href = basePath.prependTo("/prism/prism.css")
