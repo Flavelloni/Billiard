@@ -59,6 +59,7 @@ private const val MOBILE_OVERLAP_BALL_RADIUS = 82.0
 private const val MOBILE_BREAKPOINT_PX = 768
 private const val CUE_BALL_ALPHA = 0.82f
 private const val TABLE_RAIL_PADDING = "clamp(10px, 2.2vw, 22px)"
+private const val TABLE_DIAMOND_SIZE = "clamp(5px, 1.2vw, 9px)"
 
 private data class Point(val x: Double, val y: Double) {
     operator fun plus(other: Point) = Point(x + other.x, y + other.y)
@@ -434,11 +435,11 @@ private fun TableDiamond(side: RailSide, fraction: Double) {
     Div(
         attrs = Modifier
             .position(Position.Absolute)
-            .width(9.px)
-            .height(9.px)
             .backgroundColor(Color.rgba(246, 221, 174, 0.86f))
             .border(1.px, LineStyle.Solid, Color.rgba(104, 64, 24, 0.45f))
             .styleModifier {
+                property("width", TABLE_DIAMOND_SIZE)
+                property("height", TABLE_DIAMOND_SIZE)
                 when (side) {
                     RailSide.Top -> {
                         property("left", "${fraction * 100}%")
@@ -620,9 +621,9 @@ private fun ResultPanel(
 
     val absError = abs(angleError)
     val feedback = when {
-        absError < 0.5 -> "Dead on."
-        absError < 2.0 -> "Very close."
-        absError < 12.0 -> "Not bad."
+        absError < 1 -> "Dead on."
+        absError < 7.0 -> "Nice shot!"
+        absError < 15.0 -> "Not bad."
         absError < 20 -> "That was a bit off."
         else -> "That was clearly off."
     }
