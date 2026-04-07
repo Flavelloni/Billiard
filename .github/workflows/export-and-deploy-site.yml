@@ -71,15 +71,18 @@ jobs:
           cd site
           ../kobweb-${{ env.KOBWEB_CLI_VERSION }}/bin/kobweb export --notty --layout static
 
-      - name: Create fallback file
+      - name: Assemble publish directory
         run: |
-          cd site/.kobweb/site
-          cp index.html 404.html
+          mkdir -p site/.kobweb/publish
+          cp -r site/.kobweb/site/system/. site/.kobweb/publish/
+          cp -r site/.kobweb/site/resources/. site/.kobweb/publish/
+          cp -r site/.kobweb/site/pages/. site/.kobweb/publish/
+          cp site/.kobweb/publish/index.html site/.kobweb/publish/404.html
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./site/.kobweb/site
+          path: ./site/.kobweb/publish
 
   deploy:
     environment:
