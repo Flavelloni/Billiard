@@ -9,13 +9,13 @@ import com.varabyte.kobweb.core.layout.Layout
 import com.varabyte.kobweb.site.components.layouts.PageLayoutData
 
 @InitRoute
-fun initPoolTrainerPage(ctx: InitRouteContext) {
-    ctx.data.add(PageLayoutData("Pool Trainer", "Fractional aiming trainer with legal random potting layouts."))
+fun initBillard3DPage(ctx: InitRouteContext) {
+    ctx.data.add(PageLayoutData("Billard3D", "Vertical two-thirds table trainer with top and player perspective views."))
 }
 
 @Page
 @Composable
 @Layout(".components.layouts.PageLayout")
-fun PoolTrainerPage() {
-    PoolTrainerScreen()
+fun Billard3DPage() {
+    Billard3DScreen()
 }
