@@ -120,6 +120,11 @@ private data class ShotSetup(
     val target: ShotOption,
 )
 
+private data class SubmittedShotVisuals(
+    val ghostBall: Point,
+    val cueLineEnd: Point,
+)
+
 private data class SpawnZone(
     val xRange: ClosedFloatingPointRange<Double>,
     val yRange: ClosedFloatingPointRange<Double>,
@@ -272,6 +277,8 @@ private fun BilliardsTrainerScreen(variant: TrainerVariant) {
 
     val userCutAngle = overlapOffsetToAngle(overlapOffset, overlapBallRadius)
     val angleError = userCutAngle - setup.target.cutAngleDegrees
+    val userOverlapPercent = overlapPercent(overlapOffset, overlapBallRadius)
+    val perfectOverlapPercent = overlapPercent(perfectOverlap, overlapBallRadius)
 
     fun updateOverlap(clientX: Double) {
         val rect = overlapArea?.getBoundingClientRect() ?: return
@@ -444,6 +451,8 @@ private fun BilliardsTrainerScreen(variant: TrainerVariant) {
                 perfectAngle = setup.target.cutAngleDegrees,
                 userAngle = userCutAngle,
                 angleError = angleError,
+                perfectOverlapPercent = perfectOverlapPercent,
+                userOverlapPercent = userOverlapPercent,
             )
         }
     }
@@ -505,6 +514,7 @@ private fun PoolTable(
     tableSpec: TableSpec,
 ) {
     val shotLineEnd = shownCutAngle?.let { calculateShotLineEnd(setup, it, tableSpec) }
+    val submittedShotVisuals = shownCutAngle?.let { calculateSubmittedShotVisuals(setup, it, tableSpec) }
     Div(
         attrs = Modifier
             .fillMaxWidth()
@@ -556,6 +566,35 @@ private fun PoolTable(
                     end = shotLineEnd,
                     fieldWidth = tableSpec.width,
                     fieldHeight = tableSpec.height,
+                    color = Color.rgba(255, 232, 171, 0.92f),
+                    glow = "0 0 12px rgba(255, 226, 139, 0.72)",
+                    zIndex = 1,
+                )
+            }
+
+            if (submittedShotVisuals != null) {
+                ShotLine(
+                    start = setup.cueBall,
+                    end = submittedShotVisuals.cueLineEnd,
+                    fieldWidth = tableSpec.width,
+                    fieldHeight = tableSpec.height,
+                    lineThickness = 2.5,
+                    color = Color.rgba(181, 225, 245, 0.82f),
+                    glow = "0 0 10px rgba(135, 207, 235, 0.3)",
+                    zIndex = 1,
+                    borderStyle = LineStyle.Dashed,
+                )
+
+                BallLike(
+                    center = submittedShotVisuals.ghostBall,
+                    radius = ballRadius,
+                    fieldWidth = tableSpec.width,
+                    fieldHeight = tableSpec.height,
+                    fill = Color.rgba(181, 225, 245, 0.16f),
+                    borderColor = Color.rgba(181, 225, 245, 0.92f),
+                    glow = "0 0 0 2px rgba(181,225,245,0.12), inset 0 0 0 1px rgba(255,255,255,0.14)",
+                    zIndex = 2,
+                    borderStyle = LineStyle.Dashed,
                 )
             }
 
@@ -687,6 +726,10 @@ private fun ShotLine(
     fieldWidth: Double,
     fieldHeight: Double,
     lineThickness: Double = 4.0,
+    color: Color = Color.rgba(255, 232, 171, 0.92f),
+    glow: String = "0 0 12px rgba(255, 226, 139, 0.72)",
+    zIndex: Int = 1,
+    borderStyle: LineStyle = LineStyle.Solid,
 ) {
     val dx = end.x - start.x
     val dy = end.y - start.y
@@ -700,13 +743,14 @@ private fun ShotLine(
             .top((((start.y - lineThickness / 2.0) / fieldHeight) * 100).percent)
             .width((length / fieldWidth * 100).percent)
             .height(lineThickness.px)
-            .backgroundColor(Color.rgba(255, 232, 171, 0.92f))
+            .backgroundColor(color)
             .borderRadius(999.px)
-            .zIndex(1)
+            .border(1.px, borderStyle, color)
+            .zIndex(zIndex)
             .styleModifier {
                 property("transform", "rotate(${angle}deg)")
                 property("transform-origin", "0 50%")
-                property("box-shadow", "0 0 12px rgba(255, 226, 139, 0.72)")
+                property("box-shadow", glow)
             }
             .toAttrs()
     )
@@ -818,6 +862,8 @@ private fun ResultPanel(
     perfectAngle: Double,
     userAngle: Double,
     angleError: Double,
+    perfectOverlapPercent: Double,
+    userOverlapPercent: Double,
 ) {
     if (!submitted) {
         P(
@@ -875,6 +921,19 @@ private fun ResultPanel(
         ) {
             Text("$directionalMiss Required cut: ${formatSignedDegreesText(perfectAngle)}. Your overlap built: ${formatSignedDegreesText(userAngle)}.")
         }
+        P(
+            attrs = Modifier
+                .margin(0.px)
+                .fontSize(0.95.cssRem)
+                .lineHeight(1.6)
+                .color(Color.rgba(255, 255, 255, 0.72f))
+                .toAttrs()
+        ) {
+            Text(
+                "Required overlap: ${formatPercentText(perfectOverlapPercent)} ${overlapSideLabel(perfectAngle)}. " +
+                    "Your overlap: ${formatPercentText(userOverlapPercent)} ${overlapSideLabel(userAngle)}."
+            )
+        }
     }
 }
 
@@ -909,6 +968,18 @@ private fun BallLike(
 private fun calculateShotLineEnd(setup: ShotSetup, cutAngleDegrees: Double, tableSpec: TableSpec): Point {
     val shotDirection = solveObjectBallDirection(setup.cueBall, setup.objectBall, cutAngleDegrees) ?: return setup.objectBall
     return rayToPocketOrTableBounds(setup.objectBall, shotDirection, setup.target.pocket, tableSpec)
+}
+
+private fun calculateSubmittedShotVisuals(setup: ShotSetup, cutAngleDegrees: Double, tableSpec: TableSpec): SubmittedShotVisuals? {
+    val objectDirection = solveObjectBallDirection(setup.cueBall, setup.objectBall, cutAngleDegrees) ?: return null
+    val normalizedObjectDirection = normalized(objectDirection) ?: return null
+    val ghostBall = setup.objectBall - normalizedObjectDirection * (BALL_RADIUS * 2.0)
+    val cueDirection = normalized(ghostBall - setup.cueBall) ?: return null
+    val cueLineEnd = rayToTableBounds(setup.cueBall, cueDirection, tableSpec)
+    return SubmittedShotVisuals(
+        ghostBall = ghostBall,
+        cueLineEnd = cueLineEnd,
+    )
 }
 
 private fun generateShotSetup(tableSpec: TableSpec, random: Random = Random.Default): ShotSetup {
@@ -1085,6 +1156,12 @@ private fun overlapOffsetToAngle(offset: Double, ballRadius: Double): Double {
     return -asin(ratio) * 180.0 / PI
 }
 
+private fun overlapPercent(offset: Double, ballRadius: Double): Double {
+    val fullDiameter = ballRadius * 2.0
+    val overlapLength = (fullDiameter - abs(offset)).coerceIn(0.0, fullDiameter)
+    return overlapLength / fullDiameter * 100.0
+}
+
 private fun formatDegreesText(value: Double): String = "${(value * 10.0).toInt() / 10.0} deg"
 
 private fun formatSignedDegreesText(value: Double): String {
@@ -1095,6 +1172,16 @@ private fun formatSignedDegreesText(value: Double): String {
 private fun angleDirectionLabel(angleDegrees: Double): String {
     return if (angleDegrees > 0) "to the right" else "to the left"
 }
+
+private fun overlapSideLabel(angleDegrees: Double): String {
+    return when {
+        angleDegrees > 2.0 -> "(right-side)"
+        angleDegrees < -2.0 -> "(left-side)"
+        else -> "(center-ball)"
+    }
+}
+
+private fun formatPercentText(value: Double): String = "${(value * 10.0).toInt() / 10.0}%"
 
 private fun flipVertically(point: Point, height: Double): Point = Point(point.x, height - point.y)
 
