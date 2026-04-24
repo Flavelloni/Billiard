@@ -7,10 +7,8 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import com.varabyte.kobweb.compose.css.AlignItems
 import com.varabyte.kobweb.compose.css.AlignSelf
 import com.varabyte.kobweb.compose.css.FontWeight
-import com.varabyte.kobweb.compose.css.JustifyContent
 import com.varabyte.kobweb.compose.css.Overflow
 import com.varabyte.kobweb.compose.foundation.layout.Column
 import com.varabyte.kobweb.compose.foundation.layout.Row
@@ -18,7 +16,6 @@ import com.varabyte.kobweb.compose.ui.Alignment
 import com.varabyte.kobweb.compose.ui.Modifier
 import com.varabyte.kobweb.compose.ui.graphics.Color
 import com.varabyte.kobweb.compose.ui.graphics.Colors
-import com.varabyte.kobweb.compose.ui.modifiers.alignItems
 import com.varabyte.kobweb.compose.ui.modifiers.alignSelf
 import com.varabyte.kobweb.compose.ui.modifiers.backgroundColor
 import com.varabyte.kobweb.compose.ui.modifiers.border
@@ -31,7 +28,6 @@ import com.varabyte.kobweb.compose.ui.modifiers.fontSize
 import com.varabyte.kobweb.compose.ui.modifiers.fontWeight
 import com.varabyte.kobweb.compose.ui.modifiers.gap
 import com.varabyte.kobweb.compose.ui.modifiers.height
-import com.varabyte.kobweb.compose.ui.modifiers.justifyContent
 import com.varabyte.kobweb.compose.ui.modifiers.left
 import com.varabyte.kobweb.compose.ui.modifiers.lineHeight
 import com.varabyte.kobweb.compose.ui.modifiers.margin
@@ -50,9 +46,9 @@ import com.varabyte.kobweb.site.components.style.MutedSpanTextVariant
 import com.varabyte.kobweb.site.components.style.SiteTextSize
 import com.varabyte.kobweb.site.components.style.siteText
 import kotlinx.browser.window
+import org.jetbrains.compose.web.css.FlexWrap
 import org.jetbrains.compose.web.css.LineStyle
 import org.jetbrains.compose.web.css.Position
-import org.jetbrains.compose.web.css.FlexWrap
 import org.jetbrains.compose.web.css.cssRem
 import org.jetbrains.compose.web.css.percent
 import org.jetbrains.compose.web.css.px
@@ -76,9 +72,12 @@ private const val TABLE_WIDTH = 1000.0
 private const val TABLE_HEIGHT = 560.0
 private const val CROPPED_VERTICAL_WIDTH = TABLE_HEIGHT
 private const val CROPPED_VERTICAL_HEIGHT = TABLE_WIDTH * 2.0 / 3.0
+private const val CROPPED_LOWEST_DIAMOND_FRACTION = 4.0 / 5.0
+private const val CROPPED_SIDE_POCKET_Y = CROPPED_VERTICAL_HEIGHT * CROPPED_LOWEST_DIAMOND_FRACTION
 private const val BALL_RADIUS = 20.0
 private const val MOBILE_TABLE_BALL_RADIUS = 24.0
-private const val POCKET_RADIUS = 34.0
+private const val CORNER_POCKET_RADIUS = 42.0
+private const val SIDE_POCKET_RADIUS = 34.0
 private const val CORNER_POCKET_TARGET_INSET = 28.0
 private const val SIDE_POCKET_TARGET_INSET = 12.0
 private const val MAX_REQUIRED_CUT_ANGLE = 60.0
@@ -90,25 +89,18 @@ private const val MOBILE_BREAKPOINT_PX = 768
 private const val CUE_BALL_ALPHA = 0.82f
 private const val TABLE_RAIL_PADDING = "clamp(10px, 2.2vw, 22px)"
 private const val TABLE_DIAMOND_SIZE = "clamp(5px, 1.2vw, 9px)"
-private const val PERSPECTIVE_WIDTH = 860.0
-private const val PERSPECTIVE_HEIGHT = 720.0
-private const val PERSPECTIVE_TOP_Y = 86.0
-private const val PERSPECTIVE_BOTTOM_Y = 648.0
-private const val PERSPECTIVE_TOP_WIDTH_RATIO = 0.50
-private const val PERSPECTIVE_BOTTOM_WIDTH_RATIO = 0.94
-private const val PERSPECTIVE_FAR_SCALE = 0.56
-private const val PERSPECTIVE_NEAR_SCALE = 1.14
+private const val TABLE_BORDER_RADIUS = "clamp(18px, 4vw, 32px)"
+private const val TABLE_INNER_RADIUS = "clamp(12px, 3vw, 22px)"
+private const val CROPPED_TABLE_RADIUS = "clamp(18px, 4vw, 32px) clamp(18px, 4vw, 32px) 0 0"
+private const val CROPPED_INNER_RADIUS = "clamp(12px, 3vw, 22px) clamp(12px, 3vw, 22px) 0 0"
+private const val CUSHION_INSET = 18.0
+private const val CUSHION_THICKNESS = 1.0
 
 private data class Point(val x: Double, val y: Double) {
     operator fun plus(other: Point) = Point(x + other.x, y + other.y)
     operator fun minus(other: Point) = Point(x - other.x, y - other.y)
     operator fun times(scale: Double) = Point(x * scale, y * scale)
 }
-
-private data class ProjectedPoint(
-    val center: Point,
-    val scale: Double,
-)
 
 private data class Pocket(
     val label: String,
@@ -142,24 +134,19 @@ private data class TableSpec(
     val objectZone: SpawnZone,
     val horizontalRailFractions: List<Double>,
     val verticalRailFractions: List<Double>,
+    val sharedXRange: ClosedFloatingPointRange<Double>? = null,
     val allowVerticalMirror: Boolean = false,
+    val outerPaddingCss: String = TABLE_RAIL_PADDING,
+    val outerBorderRadiusCss: String = TABLE_BORDER_RADIUS,
+    val innerBorderRadiusCss: String = TABLE_INNER_RADIUS,
+    val showBottomRail: Boolean = true,
+    val showBottomCushion: Boolean = true,
 )
-
-private enum class TrainerVisualMode {
-    Flat,
-    Switchable3D,
-}
-
-private enum class TableViewMode {
-    Top,
-    Player,
-}
 
 private data class TrainerVariant(
     val label: String,
     val heading: String,
     val description: String,
-    val visualMode: TrainerVisualMode,
     val tableSpec: TableSpec,
 )
 
@@ -175,28 +162,42 @@ private enum class RailSide {
     Left,
 }
 
+private val fullTopLeftPocket = Pocket("Top left", Point(0.0, 0.0), Point(CORNER_POCKET_TARGET_INSET, CORNER_POCKET_TARGET_INSET))
+private val fullTopMiddlePocket = Pocket("Top middle", Point(TABLE_WIDTH / 2.0, 0.0), Point(TABLE_WIDTH / 2.0, SIDE_POCKET_TARGET_INSET))
+private val fullTopRightPocket = Pocket("Top right", Point(TABLE_WIDTH, 0.0), Point(TABLE_WIDTH - CORNER_POCKET_TARGET_INSET, CORNER_POCKET_TARGET_INSET))
+private val fullBottomLeftPocket = Pocket("Bottom left", Point(0.0, TABLE_HEIGHT), Point(CORNER_POCKET_TARGET_INSET, TABLE_HEIGHT - CORNER_POCKET_TARGET_INSET))
+private val fullBottomMiddlePocket = Pocket("Bottom middle", Point(TABLE_WIDTH / 2.0, TABLE_HEIGHT), Point(TABLE_WIDTH / 2.0, TABLE_HEIGHT - SIDE_POCKET_TARGET_INSET))
+private val fullBottomRightPocket = Pocket("Bottom right", Point(TABLE_WIDTH, TABLE_HEIGHT), Point(TABLE_WIDTH - CORNER_POCKET_TARGET_INSET, TABLE_HEIGHT - CORNER_POCKET_TARGET_INSET))
+
+private val croppedTopLeftPocket = Pocket("Top left", Point(0.0, 0.0), Point(CORNER_POCKET_TARGET_INSET, CORNER_POCKET_TARGET_INSET))
+private val croppedTopRightPocket = Pocket("Top right", Point(CROPPED_VERTICAL_WIDTH, 0.0), Point(CROPPED_VERTICAL_WIDTH - CORNER_POCKET_TARGET_INSET, CORNER_POCKET_TARGET_INSET))
+private val croppedLeftSidePocket = Pocket("Left side", Point(0.0, CROPPED_SIDE_POCKET_Y), Point(SIDE_POCKET_TARGET_INSET, CROPPED_SIDE_POCKET_Y))
+private val croppedRightSidePocket = Pocket("Right side", Point(CROPPED_VERTICAL_WIDTH, CROPPED_SIDE_POCKET_Y), Point(CROPPED_VERTICAL_WIDTH - SIDE_POCKET_TARGET_INSET, CROPPED_SIDE_POCKET_Y))
+
 private val fullTablePockets = listOf(
-    Pocket("Top left", Point(0.0, 0.0), Point(CORNER_POCKET_TARGET_INSET, CORNER_POCKET_TARGET_INSET)),
-    Pocket("Top middle", Point(TABLE_WIDTH / 2.0, 0.0), Point(TABLE_WIDTH / 2.0, SIDE_POCKET_TARGET_INSET)),
-    Pocket("Top right", Point(TABLE_WIDTH, 0.0), Point(TABLE_WIDTH - CORNER_POCKET_TARGET_INSET, CORNER_POCKET_TARGET_INSET)),
-    Pocket("Bottom left", Point(0.0, TABLE_HEIGHT), Point(CORNER_POCKET_TARGET_INSET, TABLE_HEIGHT - CORNER_POCKET_TARGET_INSET)),
-    Pocket("Bottom middle", Point(TABLE_WIDTH / 2.0, TABLE_HEIGHT), Point(TABLE_WIDTH / 2.0, TABLE_HEIGHT - SIDE_POCKET_TARGET_INSET)),
-    Pocket("Bottom right", Point(TABLE_WIDTH, TABLE_HEIGHT), Point(TABLE_WIDTH - CORNER_POCKET_TARGET_INSET, TABLE_HEIGHT - CORNER_POCKET_TARGET_INSET)),
+    fullTopLeftPocket,
+    fullTopMiddlePocket,
+    fullTopRightPocket,
+    fullBottomLeftPocket,
+    fullBottomMiddlePocket,
+    fullBottomRightPocket,
 )
 
-private val croppedPockets = listOf(
-    Pocket("Top left", Point(0.0, 0.0), Point(CORNER_POCKET_TARGET_INSET, CORNER_POCKET_TARGET_INSET)),
-    Pocket("Top right", Point(CROPPED_VERTICAL_WIDTH, 0.0), Point(CROPPED_VERTICAL_WIDTH - CORNER_POCKET_TARGET_INSET, CORNER_POCKET_TARGET_INSET)),
+private val croppedVisiblePockets = listOf(
+    croppedTopLeftPocket,
+    croppedTopRightPocket,
+    croppedLeftSidePocket,
+    croppedRightSidePocket,
 )
 
-private val topPockets = fullTablePockets.take(3)
+private val topPockets = listOf(fullTopLeftPocket, fullTopMiddlePocket, fullTopRightPocket)
+private val croppedTargetPockets = listOf(croppedTopLeftPocket, croppedTopRightPocket)
 private val longRailDiamondFractions = listOf(1, 2, 3, 5, 6, 7).map { it / 8.0 }
 private val shortRailDiamondFractions = (1..3).map { it / 4.0 }
-private val croppedVerticalRailFractions = (1..4).map { it / 5.0 }
+private val croppedVerticalRailFractions = listOf(1.0 / 5.0, 2.0 / 5.0, 3.0 / 5.0)
 private val trainerLinks = listOf(
     TrainerLink("Billard", "/pool-trainer"),
-    TrainerLink("Billard2", "/billard2"),
-    TrainerLink("Billard3D", "/billard3d"),
+    TrainerLink("Billiard2", "/billiard2"),
 )
 
 private val classicTableSpec = TableSpec(
@@ -214,35 +215,31 @@ private val classicTableSpec = TableSpec(
 private val croppedTableSpec = TableSpec(
     width = CROPPED_VERTICAL_WIDTH,
     height = CROPPED_VERTICAL_HEIGHT,
-    pockets = croppedPockets,
-    targetPockets = croppedPockets,
-    cueZone = SpawnZone(84.0..(CROPPED_VERTICAL_WIDTH - 84.0), (CROPPED_VERTICAL_HEIGHT / 2.0 + 44.0)..(CROPPED_VERTICAL_HEIGHT - 92.0)),
-    objectZone = SpawnZone(84.0..(CROPPED_VERTICAL_WIDTH - 84.0), 84.0..(CROPPED_VERTICAL_HEIGHT / 2.0 - 44.0)),
+    pockets = croppedVisiblePockets,
+    targetPockets = croppedTargetPockets,
+    cueZone = SpawnZone(150.0..410.0, (CROPPED_VERTICAL_HEIGHT / 2.0 + 44.0)..(CROPPED_VERTICAL_HEIGHT - 92.0)),
+    objectZone = SpawnZone(150.0..410.0, 84.0..(CROPPED_VERTICAL_HEIGHT / 2.0 - 44.0)),
     horizontalRailFractions = shortRailDiamondFractions,
     verticalRailFractions = croppedVerticalRailFractions,
+    sharedXRange = 150.0..410.0,
+    outerPaddingCss = "$TABLE_RAIL_PADDING $TABLE_RAIL_PADDING 0 $TABLE_RAIL_PADDING",
+    outerBorderRadiusCss = CROPPED_TABLE_RADIUS,
+    innerBorderRadiusCss = CROPPED_INNER_RADIUS,
+    showBottomRail = false,
+    showBottomCushion = false,
 )
 
 private val classicVariant = TrainerVariant(
     label = "Billard",
     heading = "Billiards Trainer",
     description = "Study the random layout, read the cut from the highlighted pocket, then recreate the cue-ball overlap below.",
-    visualMode = TrainerVisualMode.Flat,
     tableSpec = classicTableSpec,
 )
 
-private val billard2Variant = TrainerVariant(
-    label = "Billard2",
-    heading = "Billard2",
-    description = "Vertical two-thirds layout. Only the upper corner pockets are in play, with the object ball spawned above the cue ball.",
-    visualMode = TrainerVisualMode.Flat,
-    tableSpec = croppedTableSpec,
-)
-
-private val billard3DVariant = TrainerVariant(
-    label = "Billard3D",
-    heading = "Billard3D",
-    description = "Same constrained two-thirds layout as Billard2, with a switch between top view and a player-perspective table view.",
-    visualMode = TrainerVisualMode.Switchable3D,
+private val billiard2Variant = TrainerVariant(
+    label = "Billiard2",
+    heading = "Billiard2",
+    description = "Vertical two-thirds layout with top corner targets, visible side pockets, no bottom rail, and vertically aligned ball positions.",
     tableSpec = croppedTableSpec,
 )
 
@@ -252,13 +249,8 @@ fun PoolTrainerScreen() {
 }
 
 @Composable
-fun Billard2Screen() {
-    BilliardsTrainerScreen(billard2Variant)
-}
-
-@Composable
-fun Billard3DScreen() {
-    BilliardsTrainerScreen(billard3DVariant)
+fun Billiard2Screen() {
+    BilliardsTrainerScreen(billiard2Variant)
 }
 
 @Composable
@@ -267,7 +259,6 @@ private fun BilliardsTrainerScreen(variant: TrainerVariant) {
     val tableBallRadius = if (isMobile) MOBILE_TABLE_BALL_RADIUS else BALL_RADIUS
     val overlapBallRadius = if (isMobile) MOBILE_OVERLAP_BALL_RADIUS else OVERLAP_BALL_RADIUS
     var setup by remember(variant.label) { mutableStateOf(generateShotSetup(variant.tableSpec)) }
-    var viewMode by remember(variant.label) { mutableStateOf(TableViewMode.Top) }
     val perfectOverlap = remember(setup, overlapBallRadius) {
         overlapOffsetFromAngle(setup.target.cutAngleDegrees, overlapBallRadius)
     }
@@ -339,16 +330,11 @@ private fun BilliardsTrainerScreen(variant: TrainerVariant) {
                 }
                 .gap(1.25.cssRem)
         ) {
-            if (variant.visualMode == TrainerVisualMode.Switchable3D) {
-                ViewModeToggle(viewMode = viewMode, onViewModeChanged = { viewMode = it })
-            }
-
             PoolTable(
                 setup = setup,
                 shownCutAngle = if (submitted) userCutAngle else null,
                 ballRadius = tableBallRadius,
                 tableSpec = variant.tableSpec,
-                viewMode = viewMode,
             )
         }
 
@@ -431,6 +417,11 @@ private fun BilliardsTrainerScreen(variant: TrainerVariant) {
                 }
             }
 
+            Row(Modifier.gap(0.75.cssRem).flexWrap(FlexWrap.Wrap)) {
+                ActionButton("Check overlap") { submitted = true }
+                ActionButton("New layout") { setup = generateShotSetup(variant.tableSpec) }
+            }
+
             Column(Modifier.gap(0.35.cssRem)) {
                 Span(
                     attrs = Modifier
@@ -446,16 +437,6 @@ private fun BilliardsTrainerScreen(variant: TrainerVariant) {
                     Modifier.siteText(SiteTextSize.SMALL),
                     MutedSpanTextVariant
                 )
-            }
-
-            Row(Modifier.gap(0.75.cssRem).flexWrap(FlexWrap.Wrap)) {
-                ActionButton("Check overlap") { submitted = true }
-                ActionButton("New layout") {
-                    setup = generateShotSetup(variant.tableSpec)
-                    if (variant.visualMode == TrainerVisualMode.Switchable3D) {
-                        viewMode = TableViewMode.Top
-                    }
-                }
             }
 
             ResultPanel(
@@ -500,73 +481,6 @@ private fun TrainerModeTabs(activeLabel: String) {
 }
 
 @Composable
-private fun ViewModeToggle(viewMode: TableViewMode, onViewModeChanged: (TableViewMode) -> Unit) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .justifyContent(JustifyContent.SpaceBetween)
-            .alignItems(AlignItems.Center)
-            .gap(0.75.cssRem)
-            .flexWrap(FlexWrap.Wrap)
-    ) {
-        Column(Modifier.gap(0.25.cssRem)) {
-            Span(
-                attrs = Modifier
-                    .fontSize(1.05.cssRem)
-                    .fontWeight(FontWeight.Medium)
-                    .color(Colors.White)
-                    .toAttrs()
-            ) {
-                Text("Camera")
-            }
-            SpanText(
-                "Switch between the flat overhead layout and a player view from behind the cue ball.",
-                Modifier.siteText(SiteTextSize.SMALL),
-                MutedSpanTextVariant
-            )
-        }
-        Row(Modifier.gap(0.55.cssRem).flexWrap(FlexWrap.Wrap)) {
-            SelectableButton("Top view", viewMode == TableViewMode.Top) {
-                onViewModeChanged(TableViewMode.Top)
-            }
-            SelectableButton("Player view", viewMode == TableViewMode.Player) {
-                onViewModeChanged(TableViewMode.Player)
-            }
-        }
-    }
-}
-
-@Composable
-private fun SelectableButton(label: String, selected: Boolean, onActivate: () -> Unit) {
-    Button(
-        attrs = Modifier
-            .padding(leftRight = 1.0.cssRem, topBottom = 0.6.cssRem)
-            .borderRadius(14.px)
-            .backgroundColor(if (selected) Color.rgba(241, 197, 79, 0.18f) else Color.rgba(255, 255, 255, 0.08f))
-            .border(
-                1.px,
-                LineStyle.Solid,
-                if (selected) Color.rgba(241, 197, 79, 0.62f) else Color.rgba(255, 255, 255, 0.14f)
-            )
-            .color(if (selected) Color.rgb(247, 219, 128) else Colors.White)
-            .fontWeight(FontWeight.Medium)
-            .styleModifier {
-                property("cursor", "pointer")
-                property("touch-action", "manipulation")
-            }
-            .toAttrs {
-                onClick { onActivate() }
-                onTouchStart {
-                    it.preventDefault()
-                    onActivate()
-                }
-            }
-    ) {
-        Text(label)
-    }
-}
-
-@Composable
 private fun rememberIsMobileLayout(): Boolean {
     var isMobile by remember { mutableStateOf(window.innerWidth <= MOBILE_BREAKPOINT_PX) }
 
@@ -589,31 +503,6 @@ private fun PoolTable(
     shownCutAngle: Double?,
     ballRadius: Double,
     tableSpec: TableSpec,
-    viewMode: TableViewMode,
-) {
-    if (viewMode == TableViewMode.Player) {
-        PerspectivePoolTable(
-            setup = setup,
-            shownCutAngle = shownCutAngle,
-            ballRadius = ballRadius,
-            tableSpec = tableSpec,
-        )
-    } else {
-        FlatPoolTable(
-            setup = setup,
-            shownCutAngle = shownCutAngle,
-            ballRadius = ballRadius,
-            tableSpec = tableSpec,
-        )
-    }
-}
-
-@Composable
-private fun FlatPoolTable(
-    setup: ShotSetup,
-    shownCutAngle: Double?,
-    ballRadius: Double,
-    tableSpec: TableSpec,
 ) {
     val shotLineEnd = shownCutAngle?.let { calculateShotLineEnd(setup, it, tableSpec) }
     Div(
@@ -624,8 +513,8 @@ private fun FlatPoolTable(
             .position(Position.Relative)
             .overflow(Overflow.Hidden)
             .styleModifier {
-                property("padding", TABLE_RAIL_PADDING)
-                property("border-radius", "clamp(18px, 4vw, 32px)")
+                property("padding", tableSpec.outerPaddingCss)
+                property("border-radius", tableSpec.outerBorderRadiusCss)
                 property("box-shadow", "inset 0 0 0 2px rgba(255, 228, 166, 0.18), inset 0 18px 36px rgba(255, 255, 255, 0.06), 0 18px 40px rgba(0, 0, 0, 0.3)")
                 property("background-image", "linear-gradient(145deg, rgba(122,76,34,0.92), rgba(67,34,11,0.94))")
             }
@@ -633,7 +522,9 @@ private fun FlatPoolTable(
     ) {
         tableSpec.horizontalRailFractions.forEach { fraction ->
             TableDiamond(RailSide.Top, fraction)
-            TableDiamond(RailSide.Bottom, fraction)
+            if (tableSpec.showBottomRail) {
+                TableDiamond(RailSide.Bottom, fraction)
+            }
         }
         tableSpec.verticalRailFractions.forEach { fraction ->
             TableDiamond(RailSide.Left, fraction)
@@ -647,11 +538,18 @@ private fun FlatPoolTable(
                 .overflow(Overflow.Hidden)
                 .backgroundColor(Color.rgb(21, 93, 58))
                 .styleModifier {
-                    property("border-radius", "clamp(12px, 3vw, 22px)")
+                    property("border-radius", tableSpec.innerBorderRadiusCss)
                     property("background-image", "radial-gradient(circle at 30% 20%, rgba(77, 173, 112, 0.28), transparent 38%), linear-gradient(180deg, rgba(17, 101, 62, 0.98), rgba(10, 73, 44, 0.98))")
                 }
                 .toAttrs()
         ) {
+            CushionLine(RailSide.Top, tableSpec.width, tableSpec.height)
+            CushionLine(RailSide.Left, tableSpec.width, tableSpec.height)
+            CushionLine(RailSide.Right, tableSpec.width, tableSpec.height)
+            if (tableSpec.showBottomCushion) {
+                CushionLine(RailSide.Bottom, tableSpec.width, tableSpec.height)
+            }
+
             if (shotLineEnd != null) {
                 ShotLine(
                     start = setup.objectBall,
@@ -663,14 +561,19 @@ private fun FlatPoolTable(
 
             tableSpec.pockets.forEach { pocket ->
                 val isTarget = pocket == setup.target.pocket
+                val pocketRadius = when (pocket.label) {
+                    "Top left", "Top right", "Bottom left", "Bottom right" -> CORNER_POCKET_RADIUS
+                    else -> SIDE_POCKET_RADIUS
+                }
                 BallLike(
                     center = pocket.renderCenter,
-                    radius = POCKET_RADIUS,
+                    radius = pocketRadius,
                     fieldWidth = tableSpec.width,
                     fieldHeight = tableSpec.height,
                     fill = if (isTarget) Color.rgb(239, 195, 79) else Color.rgb(17, 19, 18),
                     borderColor = if (isTarget) Color.rgba(255, 240, 189, 0.9f) else Color.rgba(0, 0, 0, 0.6f),
                     glow = if (isTarget) "0 0 0 3px rgba(255, 231, 157, 0.38), 0 0 24px rgba(242, 201, 76, 0.55)" else "inset 0 6px 12px rgba(255,255,255,0.04)",
+                    zIndex = 2,
                 )
             }
 
@@ -682,6 +585,7 @@ private fun FlatPoolTable(
                 fill = Color.rgb(201, 43, 43),
                 borderColor = Color.rgba(255, 255, 255, 0.72f),
                 glow = "0 10px 20px rgba(0, 0, 0, 0.26), inset 0 8px 14px rgba(255,255,255,0.28)",
+                zIndex = 3,
             )
 
             BallLike(
@@ -692,152 +596,53 @@ private fun FlatPoolTable(
                 fill = Color.rgba(244, 244, 239, CUE_BALL_ALPHA),
                 borderColor = Color.rgba(255, 255, 255, 0.92f),
                 glow = "0 10px 20px rgba(0, 0, 0, 0.2), inset 0 8px 14px rgba(255,255,255,0.72)",
+                zIndex = 3,
             )
         }
     }
 }
 
 @Composable
-private fun PerspectivePoolTable(
-    setup: ShotSetup,
-    shownCutAngle: Double?,
-    ballRadius: Double,
-    tableSpec: TableSpec,
-) {
-    val shotLineEnd = shownCutAngle?.let { calculateShotLineEnd(setup, it, tableSpec) }
-    val topLeft = projectPoint(Point(0.0, 0.0), tableSpec).center
-    val topRight = projectPoint(Point(tableSpec.width, 0.0), tableSpec).center
-    val bottomLeft = projectPoint(Point(0.0, tableSpec.height), tableSpec).center
-    val bottomRight = projectPoint(Point(tableSpec.width, tableSpec.height), tableSpec).center
-    val cueProjection = projectPoint(setup.cueBall, tableSpec)
-    val objectProjection = projectPoint(setup.objectBall, tableSpec)
-
+private fun CushionLine(side: RailSide, fieldWidth: Double, fieldHeight: Double) {
+    val inset = CUSHION_INSET
+    val thickness = CUSHION_THICKNESS
     Div(
         attrs = Modifier
-            .fillMaxWidth()
-            .styleModifier { property("aspect-ratio", "${PERSPECTIVE_WIDTH / PERSPECTIVE_HEIGHT}") }
-            .backgroundColor(Color.rgb(14, 20, 25))
-            .borderRadius(28.px)
-            .position(Position.Relative)
-            .overflow(Overflow.Hidden)
+            .position(Position.Absolute)
+            .backgroundColor(Color.rgba(0, 0, 0, 0.26f))
+            .zIndex(0)
             .styleModifier {
-                property("background-image", "radial-gradient(circle at 50% 12%, rgba(255,255,255,0.12), transparent 25%), linear-gradient(180deg, rgba(19,27,34,0.98), rgba(9,14,19,0.98))")
-                property("box-shadow", "inset 0 0 0 1px rgba(255,255,255,0.05), 0 18px 40px rgba(0,0,0,0.32)")
+                when (side) {
+                    RailSide.Top -> {
+                        property("left", "${(inset / fieldWidth) * 100}%")
+                        property("top", "${(inset / fieldHeight) * 100}%")
+                        property("width", "${((fieldWidth - inset * 2.0) / fieldWidth) * 100}%")
+                        property("height", "${(thickness / fieldHeight) * 100}%")
+                    }
+                    RailSide.Bottom -> {
+                        property("left", "${(inset / fieldWidth) * 100}%")
+                        property("top", "${((fieldHeight - inset - thickness) / fieldHeight) * 100}%")
+                        property("width", "${((fieldWidth - inset * 2.0) / fieldWidth) * 100}%")
+                        property("height", "${(thickness / fieldHeight) * 100}%")
+                    }
+                    RailSide.Left -> {
+                        property("left", "${(inset / fieldWidth) * 100}%")
+                        property("top", "${(inset / fieldHeight) * 100}%")
+                        property("width", "${(thickness / fieldWidth) * 100}%")
+                        property("height", "${((fieldHeight - inset * 2.0) / fieldHeight) * 100}%")
+                    }
+                    RailSide.Right -> {
+                        property("left", "${((fieldWidth - inset - thickness) / fieldWidth) * 100}%")
+                        property("top", "${(inset / fieldHeight) * 100}%")
+                        property("width", "${(thickness / fieldWidth) * 100}%")
+                        property("height", "${((fieldHeight - inset * 2.0) / fieldHeight) * 100}%")
+                    }
+                }
+                property("pointer-events", "none")
             }
             .toAttrs()
-    ) {
-        Div(
-            attrs = Modifier
-                .fillMaxSize()
-                .position(Position.Absolute)
-                .styleModifier {
-                    property(
-                        "clip-path",
-                        "polygon(${percentOf(topLeft.x, PERSPECTIVE_WIDTH)}% ${percentOf(topLeft.y, PERSPECTIVE_HEIGHT)}%, " +
-                            "${percentOf(topRight.x, PERSPECTIVE_WIDTH)}% ${percentOf(topRight.y, PERSPECTIVE_HEIGHT)}%, " +
-                            "${percentOf(bottomRight.x, PERSPECTIVE_WIDTH)}% ${percentOf(bottomRight.y, PERSPECTIVE_HEIGHT)}%, " +
-                            "${percentOf(bottomLeft.x, PERSPECTIVE_WIDTH)}% ${percentOf(bottomLeft.y, PERSPECTIVE_HEIGHT)}%)"
-                    )
-                    property("background-image", "linear-gradient(180deg, rgba(122,76,34,0.95), rgba(67,34,11,0.98))")
-                }
-                .toAttrs()
-        )
-
-        Div(
-            attrs = Modifier
-                .fillMaxSize()
-                .position(Position.Absolute)
-                .styleModifier {
-                    property("clip-path", "polygon(24% 15%, 76% 15%, 93% 89%, 7% 89%)")
-                    property("background-image", "radial-gradient(circle at 30% 20%, rgba(77, 173, 112, 0.3), transparent 34%), linear-gradient(180deg, rgba(19,104,63,0.98), rgba(8,64,39,0.98))")
-                    property("box-shadow", "inset 0 0 0 1px rgba(255,255,255,0.1)")
-                }
-                .toAttrs()
-        )
-
-        tableSpec.pockets.forEach { pocket ->
-            val projection = projectPoint(pocket.renderCenter, tableSpec)
-            val isTarget = pocket == setup.target.pocket
-            BallLike(
-                center = projection.center,
-                radius = POCKET_RADIUS * projection.scale * 0.92,
-                fieldWidth = PERSPECTIVE_WIDTH,
-                fieldHeight = PERSPECTIVE_HEIGHT,
-                fill = if (isTarget) Color.rgb(239, 195, 79) else Color.rgb(11, 13, 12),
-                borderColor = if (isTarget) Color.rgba(255, 240, 189, 0.88f) else Color.rgba(0, 0, 0, 0.72f),
-                glow = if (isTarget) "0 0 0 3px rgba(255,231,157,0.28), 0 0 18px rgba(242,201,76,0.4)" else "inset 0 6px 12px rgba(255,255,255,0.03)",
-            )
-        }
-
-        if (shotLineEnd != null) {
-            PerspectiveShotLine(
-                start = setup.objectBall,
-                end = shotLineEnd,
-                tableSpec = tableSpec,
-            )
-        }
-
-        BallLike(
-            center = objectProjection.center,
-            radius = ballRadius * objectProjection.scale,
-            fieldWidth = PERSPECTIVE_WIDTH,
-            fieldHeight = PERSPECTIVE_HEIGHT,
-            fill = Color.rgb(201, 43, 43),
-            borderColor = Color.rgba(255, 255, 255, 0.72f),
-            glow = "0 10px 20px rgba(0, 0, 0, 0.3), inset 0 8px 14px rgba(255,255,255,0.24)",
-            zIndex = 2,
-        )
-
-        BallLike(
-            center = cueProjection.center,
-            radius = ballRadius * cueProjection.scale,
-            fieldWidth = PERSPECTIVE_WIDTH,
-            fieldHeight = PERSPECTIVE_HEIGHT,
-            fill = Color.rgba(244, 244, 239, CUE_BALL_ALPHA),
-            borderColor = Color.rgba(255, 255, 255, 0.92f),
-            glow = "0 12px 24px rgba(0, 0, 0, 0.34), inset 0 10px 18px rgba(255,255,255,0.72)",
-            zIndex = 3,
-        )
-    }
+    )
 }
-
-@Composable
-private fun PerspectiveShotLine(
-    start: Point,
-    end: Point,
-    tableSpec: TableSpec,
-) {
-    val samples = (0..10).map { index ->
-        val t = index / 10.0
-        val samplePoint = Point(
-            x = lerp(start.x, end.x, t),
-            y = lerp(start.y, end.y, t),
-        )
-        projectPoint(samplePoint, tableSpec)
-    }
-
-    samples.zipWithNext().forEach { (from, to) ->
-        ShotLine(
-            start = from.center,
-            end = to.center,
-            fieldWidth = PERSPECTIVE_WIDTH,
-            fieldHeight = PERSPECTIVE_HEIGHT,
-            lineThickness = lerp(3.2, 5.4, (from.scale + to.scale) / 2.0 / PERSPECTIVE_NEAR_SCALE),
-        )
-    }
-}
-
-private fun projectPoint(point: Point, tableSpec: TableSpec): ProjectedPoint {
-    val depth = (point.y / tableSpec.height).coerceIn(0.0, 1.0)
-    val widthRatio = lerp(PERSPECTIVE_TOP_WIDTH_RATIO, PERSPECTIVE_BOTTOM_WIDTH_RATIO, depth)
-    val projectedWidth = PERSPECTIVE_WIDTH * widthRatio
-    val x = (PERSPECTIVE_WIDTH - projectedWidth) / 2.0 + projectedWidth * (point.x / tableSpec.width)
-    val y = lerp(PERSPECTIVE_TOP_Y, PERSPECTIVE_BOTTOM_Y, depth)
-    val scale = lerp(PERSPECTIVE_FAR_SCALE, PERSPECTIVE_NEAR_SCALE, depth)
-    return ProjectedPoint(Point(x, y), scale)
-}
-
-private fun percentOf(value: Double, total: Double): Double = value / total * 100.0
 
 @Composable
 private fun TableDiamond(side: RailSide, fraction: Double) {
@@ -1030,7 +835,7 @@ private fun ResultPanel(
 
     val absError = abs(angleError)
     val feedback = when {
-        absError < 1.0 -> "Dead on."
+        absError < 2.0 -> "Dead on."
         absError < 7.0 -> "Nice shot!"
         absError < 15.0 -> "Not bad."
         absError < 20.0 -> "That was a bit off."
@@ -1108,8 +913,7 @@ private fun calculateShotLineEnd(setup: ShotSetup, cutAngleDegrees: Double, tabl
 
 private fun generateShotSetup(tableSpec: TableSpec, random: Random = Random.Default): ShotSetup {
     repeat(12000) {
-        val initialObjectBall = randomPoint(random, tableSpec.objectZone)
-        val initialCueBall = randomPoint(random, tableSpec.cueZone)
+        val (initialCueBall, initialObjectBall) = generateBallPositions(tableSpec, random)
 
         if (distance(initialCueBall, initialObjectBall) < BALL_RADIUS * 4.0) return@repeat
 
@@ -1147,11 +951,17 @@ private fun generateShotSetup(tableSpec: TableSpec, random: Random = Random.Defa
     error("Could not generate a legal shot layout.")
 }
 
-private fun randomPoint(random: Random, zone: SpawnZone): Point {
-    return Point(
-        x = random.nextDouble(zone.xRange.start, zone.xRange.endInclusive),
-        y = random.nextDouble(zone.yRange.start, zone.yRange.endInclusive),
+private fun generateBallPositions(tableSpec: TableSpec, random: Random): Pair<Point, Point> {
+    val sharedX = tableSpec.sharedXRange?.let { random.nextDouble(it.start, it.endInclusive) }
+    val cueBall = Point(
+        x = sharedX ?: random.nextDouble(tableSpec.cueZone.xRange.start, tableSpec.cueZone.xRange.endInclusive),
+        y = random.nextDouble(tableSpec.cueZone.yRange.start, tableSpec.cueZone.yRange.endInclusive),
     )
+    val objectBall = Point(
+        x = sharedX ?: random.nextDouble(tableSpec.objectZone.xRange.start, tableSpec.objectZone.xRange.endInclusive),
+        y = random.nextDouble(tableSpec.objectZone.yRange.start, tableSpec.objectZone.yRange.endInclusive),
+    )
+    return cueBall to objectBall
 }
 
 private fun evaluateShot(cueBall: Point, objectBall: Point, pocket: Pocket, tableSpec: TableSpec): ShotOption? {
@@ -1244,7 +1054,11 @@ private fun rayToTableBounds(origin: Point, direction: Point, tableSpec: TableSp
 
 private fun rayToPocketOrTableBounds(origin: Point, direction: Point, pocket: Pocket, tableSpec: TableSpec): Point {
     val normalizedDirection = normalized(direction) ?: return origin
-    return rayToCircle(origin, normalizedDirection, pocket.renderCenter, POCKET_RADIUS)
+    val pocketRadius = when (pocket.label) {
+        "Top left", "Top right", "Bottom left", "Bottom right" -> CORNER_POCKET_RADIUS
+        else -> SIDE_POCKET_RADIUS
+    }
+    return rayToCircle(origin, normalizedDirection, pocket.renderCenter, pocketRadius)
         ?: rayToTableBounds(origin, normalizedDirection, tableSpec)
 }
 
@@ -1283,10 +1097,6 @@ private fun angleDirectionLabel(angleDegrees: Double): String {
 }
 
 private fun flipVertically(point: Point, height: Double): Point = Point(point.x, height - point.y)
-
-private fun lerp(start: Double, end: Double, progress: Double): Double {
-    return start + (end - start) * progress
-}
 
 private fun firstTouchClientPosition(event: dynamic): Pair<Double, Double>? {
     val touches = event.touches
