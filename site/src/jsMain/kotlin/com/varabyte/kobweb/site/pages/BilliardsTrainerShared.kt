@@ -1175,8 +1175,8 @@ private fun angleDirectionLabel(angleDegrees: Double): String {
 
 private fun overlapSideLabel(angleDegrees: Double): String {
     return when {
-        angleDegrees > 2.0 -> "(right-side)"
-        angleDegrees < -2.0 -> "(left-side)"
+        angleDegrees > 2.0 -> "(left-side)"
+        angleDegrees < -2.0 -> "(right-side)"
         else -> "(center-ball)"
     }
 }
