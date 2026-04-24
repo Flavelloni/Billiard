@@ -96,6 +96,7 @@ private const val CROPPED_INNER_RADIUS = "clamp(12px, 3vw, 22px) clamp(12px, 3vw
 private const val CUSHION_INSET = 18.0
 private const val CUSHION_THICKNESS = 1.0
 
+
 private data class Point(val x: Double, val y: Double) {
     operator fun plus(other: Point) = Point(x + other.x, y + other.y)
     operator fun minus(other: Point) = Point(x - other.x, y - other.y)
@@ -222,11 +223,11 @@ private val croppedTableSpec = TableSpec(
     height = CROPPED_VERTICAL_HEIGHT,
     pockets = croppedVisiblePockets,
     targetPockets = croppedTargetPockets,
-    cueZone = SpawnZone(150.0..410.0, (CROPPED_VERTICAL_HEIGHT / 2.0 + 44.0)..(CROPPED_VERTICAL_HEIGHT - 92.0)),
-    objectZone = SpawnZone(150.0..410.0, 84.0..(CROPPED_VERTICAL_HEIGHT / 2.0 - 44.0)),
     horizontalRailFractions = shortRailDiamondFractions,
     verticalRailFractions = croppedVerticalRailFractions,
-    sharedXRange = 150.0..410.0,
+    sharedXRange = 80.0..580.0,
+    cueZone = SpawnZone(80.0..580.0, (CROPPED_VERTICAL_HEIGHT / 2.0 + 44.0)..(CROPPED_VERTICAL_HEIGHT - 92.0)),
+    objectZone = SpawnZone(80.0..580.0, 84.0..(CROPPED_VERTICAL_HEIGHT / 2.0 - 44.0)),
     outerPaddingCss = "$TABLE_RAIL_PADDING $TABLE_RAIL_PADDING 0 $TABLE_RAIL_PADDING",
     outerBorderRadiusCss = CROPPED_TABLE_RADIUS,
     innerBorderRadiusCss = CROPPED_INNER_RADIUS,
