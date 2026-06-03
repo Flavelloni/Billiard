@@ -73,6 +73,11 @@ private const val TABLE_HEIGHT_TO_WIDTH_RATIO = 1.0 / 0.5625
 private data class TableBall(val id: Int, val xPercent: Double, val yPercent: Double)
 private data class TrajectoryPoint(val order: Int, val xPercent: Double, val yPercent: Double)
 
+private enum class TrajectoryKind {
+    CueBall,
+    ObjectBall,
+}
+
 private data class Hotspot(
     val id: String,
     val label: String,
@@ -135,8 +140,9 @@ fun PoolTablePage() {
     var highlightedBallId by remember { mutableStateOf<Int?>(null) }
     var selectedPockets by remember { mutableStateOf(emptySet<String>()) }
     var selectedRails by remember { mutableStateOf(emptySet<String>()) }
-    var isRecordingTrajectory by remember { mutableStateOf(false) }
-    var trajectoryPoints by remember { mutableStateOf(emptyList<TrajectoryPoint>()) }
+    var recordingTrajectoryKind by remember { mutableStateOf<TrajectoryKind?>(null) }
+    var cueBallTrajectoryPoints by remember { mutableStateOf(emptyList<TrajectoryPoint>()) }
+    var objectBallTrajectoryPoints by remember { mutableStateOf(emptyList<TrajectoryPoint>()) }
     var tableElement by remember { mutableStateOf<HTMLElement?>(null) }
 
     val availableBallIds = ballIds.filterNot { id -> placedBalls.any { it.id == id } }
@@ -239,8 +245,12 @@ fun PoolTablePage() {
                 }
                 RailSelectionArrows(selectedRails)
                 TrajectoryLayer(
-                    points = trajectoryPoints,
-                    showLines = !isRecordingTrajectory,
+                    points = cueBallTrajectoryPoints,
+                    showLines = recordingTrajectoryKind != TrajectoryKind.CueBall,
+                )
+                TrajectoryLayer(
+                    points = objectBallTrajectoryPoints,
+                    showLines = recordingTrajectoryKind != TrajectoryKind.ObjectBall,
                 )
                 PlacedBallLayer(
                     placedBalls = placedBalls,
@@ -255,46 +265,57 @@ fun PoolTablePage() {
                         }
                     },
                 )
-                if (isRecordingTrajectory) {
+                if (recordingTrajectoryKind != null) {
                     TrajectoryRecordingSurface(
                         tableElement = tableElement,
                         onRecordPoint = { xPercent, yPercent ->
-                            trajectoryPoints = trajectoryPoints + TrajectoryPoint(
-                                order = trajectoryPoints.size + 1,
-                                xPercent = xPercent,
-                                yPercent = yPercent,
-                            )
+                            recordingTrajectoryKind?.let { kind ->
+                            when (kind) {
+                                TrajectoryKind.CueBall -> {
+                                    cueBallTrajectoryPoints = cueBallTrajectoryPoints + TrajectoryPoint(
+                                        order = cueBallTrajectoryPoints.size + 1,
+                                        xPercent = xPercent,
+                                        yPercent = yPercent,
+                                    )
+                                }
+                                TrajectoryKind.ObjectBall -> {
+                                    objectBallTrajectoryPoints = objectBallTrajectoryPoints + TrajectoryPoint(
+                                        order = objectBallTrajectoryPoints.size + 1,
+                                        xPercent = xPercent,
+                                        yPercent = yPercent,
+                                    )
+                                }
+                            }
+                            }
                         },
                     )
                 }
             }
         }
 
-        Button(
-            attrs = Modifier
-                .padding(leftRight = 1.15.cssRem, topBottom = 0.72.cssRem)
-                .borderRadius(14.px)
-                .backgroundColor(if (isRecordingTrajectory) Color.rgb(255, 255, 255) else Color.rgba(255, 255, 255, 0.1f))
-                .border(1.px, LineStyle.Solid, Color.rgba(255, 255, 255, 0.22f))
-                .color(if (isRecordingTrajectory) Color.rgb(12, 18, 16) else Colors.White)
-                .fontWeight(FontWeight.Bold)
-                .styleModifier {
-                    property("cursor", "pointer")
-                    property("box-shadow", "0 12px 28px rgba(0,0,0,0.22)")
-                }
-                .toAttrs {
-                    onClick {
-                        if (isRecordingTrajectory) {
-                            isRecordingTrajectory = false
-                        } else {
-                            trajectoryPoints = emptyList()
-                            selectedBallId = null
-                            isRecordingTrajectory = true
-                        }
-                    }
-                }
-        ) {
-            Text(if (isRecordingTrajectory) "Stop recording" else "Record trajectory")
+        Row(Modifier.gap(0.75.cssRem).flexWrap(FlexWrap.Wrap)) {
+            TrajectoryButton(
+                kind = TrajectoryKind.CueBall,
+                recordingKind = recordingTrajectoryKind,
+                recordLabel = "record cue ball trajectory",
+                onStart = {
+                    cueBallTrajectoryPoints = emptyList()
+                    selectedBallId = null
+                    recordingTrajectoryKind = TrajectoryKind.CueBall
+                },
+                onStop = { recordingTrajectoryKind = null },
+            )
+            TrajectoryButton(
+                kind = TrajectoryKind.ObjectBall,
+                recordingKind = recordingTrajectoryKind,
+                recordLabel = "record object ball trajectory",
+                onStart = {
+                    objectBallTrajectoryPoints = emptyList()
+                    selectedBallId = null
+                    recordingTrajectoryKind = TrajectoryKind.ObjectBall
+                },
+                onStop = { recordingTrajectoryKind = null },
+            )
         }
 
         Button(
@@ -316,13 +337,50 @@ fun PoolTablePage() {
                             selectedPockets = selectedPockets,
                             selectedRails = selectedRails,
                             highlightedBallId = highlightedBallId,
-                            trajectoryPoints = trajectoryPoints,
+                            cueBallTrajectoryPoints = cueBallTrajectoryPoints,
+                            objectBallTrajectoryPoints = objectBallTrajectoryPoints,
                         )
                     }
                 }
         ) {
             Text("Save setup")
         }
+    }
+}
+
+@Composable
+private fun TrajectoryButton(
+    kind: TrajectoryKind,
+    recordingKind: TrajectoryKind?,
+    recordLabel: String,
+    onStart: () -> Unit,
+    onStop: () -> Unit,
+) {
+    val isRecordingThisKind = recordingKind == kind
+
+    Button(
+        attrs = Modifier
+            .padding(leftRight = 1.15.cssRem, topBottom = 0.72.cssRem)
+            .borderRadius(14.px)
+            .backgroundColor(if (isRecordingThisKind) Color.rgb(255, 255, 255) else Color.rgba(255, 255, 255, 0.1f))
+            .border(1.px, LineStyle.Solid, Color.rgba(255, 255, 255, 0.22f))
+            .color(if (isRecordingThisKind) Color.rgb(12, 18, 16) else Colors.White)
+            .fontWeight(FontWeight.Bold)
+            .styleModifier {
+                property("cursor", "pointer")
+                property("box-shadow", "0 12px 28px rgba(0,0,0,0.22)")
+            }
+            .toAttrs {
+                onClick {
+                    if (isRecordingThisKind) {
+                        onStop()
+                    } else {
+                        onStart()
+                    }
+                }
+            }
+    ) {
+        Text(if (isRecordingThisKind) "stop recording" else recordLabel)
     }
 }
 
@@ -748,7 +806,8 @@ private fun downloadSetupCsv(
     selectedPockets: Set<String>,
     selectedRails: Set<String>,
     highlightedBallId: Int?,
-    trajectoryPoints: List<TrajectoryPoint>,
+    cueBallTrajectoryPoints: List<TrajectoryPoint>,
+    objectBallTrajectoryPoints: List<TrajectoryPoint>,
 ) {
     val csv = buildString {
         appendLine("record_type,id,x_percent,y_percent,highlighted")
@@ -758,8 +817,11 @@ private fun downloadSetupCsv(
         }
         selectedPockets.sorted().forEach { pocketId -> appendLine("pocket,$pocketId,,,") }
         selectedRails.sorted().forEach { railId -> appendLine("rail,$railId,,,") }
-        trajectoryPoints.sortedBy { it.order }.forEach { point ->
-            appendLine("trajectory,${point.order},${point.xPercent.toCsvNumber()},${point.yPercent.toCsvNumber()},")
+        cueBallTrajectoryPoints.sortedBy { it.order }.forEach { point ->
+            appendLine("cue_ball_trajectory,${point.order},${point.xPercent.toCsvNumber()},${point.yPercent.toCsvNumber()},")
+        }
+        objectBallTrajectoryPoints.sortedBy { it.order }.forEach { point ->
+            appendLine("object_ball_trajectory,${point.order},${point.xPercent.toCsvNumber()},${point.yPercent.toCsvNumber()},")
         }
     }
 

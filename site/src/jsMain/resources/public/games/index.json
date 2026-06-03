@@ -1,0 +1,12 @@
+[
+{
+  "id": "example",
+  "metaPath": "/games/example/meta.json",
+  "csvPath": "/games/example/example.csv"
+},
+{
+  "id": "example2",
+  "metaPath": "/games/example2/meta.json",
+  "csvPath": "/games/example2/example.csv"
+}
+]

@@ -19,6 +19,49 @@ plugins {
 group = "com.varabyte.kobweb.site"
 version = "1.0-SNAPSHOT"
 
+val generateGamesManifest by tasks.registering {
+    val gamesDir = layout.projectDirectory.dir("src/jsMain/resources/public/games").asFile
+    val manifestFile = gamesDir.resolve("index.json")
+
+    inputs.dir(gamesDir)
+    outputs.file(manifestFile)
+
+    doLast {
+        gamesDir.mkdirs()
+        val entries = gamesDir.listFiles()
+            ?.filter { it.isDirectory }
+            ?.sortedBy { it.name }
+            ?.mapNotNull { gameDir ->
+                val metaFile = gameDir.resolve("meta.json")
+                val csvFile = gameDir.listFiles()
+                    ?.filter { it.isFile && it.extension.equals("csv", ignoreCase = true) }
+                    ?.sortedBy { it.name }
+                    ?.firstOrNull()
+
+                if (metaFile.isFile && csvFile != null) {
+                    """
+                    {
+                      "id": "${gameDir.name}",
+                      "metaPath": "/games/${gameDir.name}/meta.json",
+                      "csvPath": "/games/${gameDir.name}/${csvFile.name}"
+                    }
+                    """.trimIndent()
+                } else {
+                    null
+                }
+            }
+            ?: emptyList()
+
+        manifestFile.writeText(entries.joinToString(prefix = "[\n", separator = ",\n", postfix = "\n]\n"))
+    }
+}
+
+tasks.configureEach {
+    if (name == "jsProcessResources") {
+        dependsOn(generateGamesManifest)
+    }
+}
+
 kobweb {
     app {
         index {
