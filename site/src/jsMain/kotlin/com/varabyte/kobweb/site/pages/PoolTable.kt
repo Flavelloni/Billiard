@@ -707,7 +707,7 @@ private fun LongPressBall(
             .left(ball.xPercent.percent)
             .top(ball.yPercent.percent)
             .styleModifier {
-                property("width", "clamp(14px, 4.2vw, 21px)")
+                property("width", "3.93%")
                 property("aspect-ratio", "1")
                 property("transform", "translate(-50%, -50%)")
                 property("cursor", "pointer")
@@ -778,9 +778,9 @@ private fun RenderBall(
     }
 
     if (ballId == 0) {
-        CueBall(modifier = modifier, selected = selected)
+        CueBall(modifier = modifier, selected = selected, fillParent = fillParent)
     } else {
-        PoolBall(ballNumber = ballId, modifier = modifier, selected = selected)
+        PoolBall(ballNumber = ballId, modifier = modifier, selected = selected, fillParent = fillParent)
     }
 }
 

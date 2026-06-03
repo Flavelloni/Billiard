@@ -2,7 +2,7 @@
 {
   "id": "example",
   "metaPath": "/games/example/meta.json",
-  "csvPath": "/games/example/example.csv"
+  "csvPath": "/games/example/pool-table-setup.csv"
 },
 {
   "id": "example2",

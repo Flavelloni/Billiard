@@ -182,6 +182,7 @@ fun ShotPredictionPage() {
                     predictedCueFinish = predictedCueFinish,
                     resolved = resolved,
                     onResolve = { resolved = true },
+                    onNextLayout = ::advanceToNextGame,
                 )
 
                 Div(
@@ -346,6 +347,7 @@ private fun PredictionControls(
     predictedCueFinish: Pair<Double, Double>?,
     resolved: Boolean,
     onResolve: () -> Unit,
+    onNextLayout: () -> Unit,
 ) {
     Row(
         Modifier
@@ -374,6 +376,21 @@ private fun PredictionControls(
                 }
         ) {
             Text(if (resolved) "resolved" else "resolve")
+        }
+        Button(
+            attrs = Modifier
+                .padding(leftRight = 1.05.cssRem, topBottom = 0.62.cssRem)
+                .borderRadius(14.px)
+                .backgroundColor(Color.rgba(255, 255, 255, 0.1f))
+                .border(1.px, LineStyle.Solid, Color.rgba(255, 255, 255, 0.22f))
+                .color(Colors.White)
+                .fontWeight(FontWeight.Bold)
+                .styleModifier { property("cursor", "pointer") }
+                .toAttrs {
+                    onClick { onNextLayout() }
+                }
+        ) {
+            Text("next layout")
         }
     }
 }
@@ -429,7 +446,7 @@ private fun PredictionBallView(
             .left(ball.xPercent.percent)
             .top(ball.yPercent.percent)
             .styleModifier {
-                property("width", "clamp(18px, 4.4vw, 33px)")
+                property("width", "3.93%")
                 property("aspect-ratio", "1")
                 property("transform", "translate(-50%, -50%)")
                 property("cursor", if (ball.id == 0 || revealCorrect) "default" else "pointer")
@@ -445,9 +462,9 @@ private fun PredictionBallView(
             }
     ) {
         if (ball.id == 0) {
-            CueBall(Modifier.width(100.percent).height(100.percent), selected)
+            CueBall(Modifier.width(100.percent).height(100.percent), selected, fillParent = true)
         } else {
-            PoolBall(ball.id, Modifier.width(100.percent).height(100.percent), selected || isCorrectObject)
+            PoolBall(ball.id, Modifier.width(100.percent).height(100.percent), selected || isCorrectObject, fillParent = true)
         }
     }
 }

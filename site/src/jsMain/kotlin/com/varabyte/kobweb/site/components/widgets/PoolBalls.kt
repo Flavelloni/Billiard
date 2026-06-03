@@ -57,17 +57,26 @@ fun PoolBall(
     ballNumber: Int,
     modifier: Modifier = Modifier,
     selected: Boolean = false,
+    fillParent: Boolean = false,
 ) {
     require(ballNumber in 1..15) { "PoolBall supports standard numbered 8-ball balls from 1 to 15." }
 
     val spec = ballSpecs.getValue(ballNumber)
     val isStripe = ballNumber >= 9
-
-    Div(
-        attrs = modifier
+    val sizedModifier = if (fillParent) {
+        modifier
+            .position(Position.Relative)
+            .width(100.percent)
+            .height(100.percent)
+    } else {
+        modifier
             .position(Position.Relative)
             .width(33.px)
             .height(33.px)
+    }
+
+    Div(
+        attrs = sizedModifier
             .borderRadius(50.percent)
             .overflow(Overflow.Hidden)
             .backgroundColor(if (isStripe) Colors.White else spec.color)
@@ -102,12 +111,22 @@ fun PoolBall(
 fun CueBall(
     modifier: Modifier = Modifier,
     selected: Boolean = false,
+    fillParent: Boolean = false,
 ) {
-    Div(
-        attrs = modifier
+    val sizedModifier = if (fillParent) {
+        modifier
+            .position(Position.Relative)
+            .width(100.percent)
+            .height(100.percent)
+    } else {
+        modifier
             .position(Position.Relative)
             .width(33.px)
             .height(33.px)
+    }
+
+    Div(
+        attrs = sizedModifier
             .borderRadius(50.percent)
             .backgroundColor(Colors.White)
             .border(2.px, LineStyle.Solid, if (selected) Color.rgb(255, 218, 87) else Color.rgba(255, 255, 255, 0.78f))
