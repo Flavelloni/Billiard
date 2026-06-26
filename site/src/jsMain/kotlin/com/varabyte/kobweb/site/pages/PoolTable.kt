@@ -47,7 +47,6 @@ import com.varabyte.kobweb.site.components.widgets.CueBall
 import com.varabyte.kobweb.site.components.widgets.PoolBall
 import kotlinx.browser.document
 import kotlinx.browser.window
-import org.jetbrains.compose.web.css.DisplayStyle
 import org.jetbrains.compose.web.css.FlexWrap
 import org.jetbrains.compose.web.css.LineStyle
 import org.jetbrains.compose.web.css.Position
@@ -58,7 +57,6 @@ import org.jetbrains.compose.web.dom.Button
 import org.jetbrains.compose.web.dom.Div
 import org.jetbrains.compose.web.dom.H1
 import org.jetbrains.compose.web.dom.Img
-import org.jetbrains.compose.web.dom.P
 import org.jetbrains.compose.web.dom.Text
 import org.w3c.dom.HTMLElement
 import org.w3c.dom.HTMLAnchorElement
@@ -172,17 +170,6 @@ fun PoolTablePage() {
                     .toAttrs()
             ) {
                 Text("Pool Table Setup")
-            }
-            P(
-                attrs = Modifier
-                    .margin(0.px)
-                    .maxWidth(44.cssRem)
-                    .fontSize(0.98.cssRem)
-                    .lineHeight(1.55)
-                    .color(Color.rgba(226, 238, 230, 0.72f))
-                    .toAttrs()
-            ) {
-                Text("Click an available ball, then click the table to place it. Long-click a placed ball to highlight it. Double-click a placed ball to return it above the table.")
             }
         }
 

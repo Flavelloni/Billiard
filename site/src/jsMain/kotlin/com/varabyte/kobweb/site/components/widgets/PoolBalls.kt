@@ -80,7 +80,7 @@ fun PoolBall(
             .borderRadius(50.percent)
             .overflow(Overflow.Hidden)
             .backgroundColor(if (isStripe) Colors.White else spec.color)
-            .border(2.px, LineStyle.Solid, if (selected) Color.rgb(255, 218, 87) else Color.rgba(255, 255, 255, 0.72f))
+            .border(1.px, LineStyle.Solid, if (selected) Color.rgb(255, 218, 87) else Color.rgba(8, 10, 14, 0.46f))
             .styleModifier {
                 property("box-sizing", "border-box")
                 property("box-shadow", ballShadow(selected))
@@ -129,7 +129,7 @@ fun CueBall(
         attrs = sizedModifier
             .borderRadius(50.percent)
             .backgroundColor(Colors.White)
-            .border(2.px, LineStyle.Solid, if (selected) Color.rgb(255, 218, 87) else Color.rgba(255, 255, 255, 0.78f))
+            .border(1.px, LineStyle.Solid, if (selected) Color.rgb(255, 218, 87) else Color.rgba(8, 10, 14, 0.36f))
             .styleModifier {
                 property("box-sizing", "border-box")
                 property("box-shadow", ballShadow(selected))
@@ -146,13 +146,13 @@ private fun BallNumber(number: Int) {
             .position(Position.Absolute)
             .left(50.percent)
             .top(50.percent)
-            .width(42.percent)
-            .height(42.percent)
+            .width(60.percent)
+            .height(60.percent)
             .borderRadius(50.percent)
             .backgroundColor(Colors.White)
             .color(Colors.Black)
             .display(DisplayStyle.Flex)
-            .fontSize(6.px)
+            .fontSize(10.px)
             .fontWeight(FontWeight.Bold)
             .lineHeight(1)
             .styleModifier {

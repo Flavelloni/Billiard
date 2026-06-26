@@ -44,6 +44,7 @@ import com.varabyte.kobweb.core.layout.Layout
 import com.varabyte.kobweb.navigation.BasePath
 import com.varabyte.kobweb.site.components.layouts.PageLayoutData
 import com.varabyte.kobweb.site.components.widgets.CueBall
+import com.varabyte.kobweb.site.components.widgets.FeaturedPlayers
 import com.varabyte.kobweb.site.components.widgets.PoolBall
 import org.jetbrains.compose.web.css.FlexWrap
 import org.jetbrains.compose.web.css.LineStyle
@@ -168,6 +169,8 @@ fun ShotPredictionPage() {
         ) {
             Text("Shot Prediction")
         }
+
+        FeaturedPlayers()
 
         when {
             loadError != null -> PredictionMessage(loadError ?: "Could not load games.")
@@ -324,7 +327,7 @@ private fun GameHeader(game: PredictionGame, index: Int, total: Int) {
                 .color(Colors.White)
                 .toAttrs()
         ) {
-            Text("${game.meta.player} vs ${game.meta.opponent}")
+            Text("${game.meta.player} to shoot")
         }
         P(
             attrs = Modifier
