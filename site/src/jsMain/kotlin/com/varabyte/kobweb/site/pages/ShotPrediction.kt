@@ -275,7 +275,11 @@ fun ShotPredictionPage() {
                         )
                         if (resolved) {
                             TrajectoryLayer(currentGame.objectTrajectory, Color.rgb(255, 255, 255))
-                            TrajectoryLayer(currentGame.cueTrajectory, Color.rgb(255, 255, 255))
+                            CueTrajectoryLayer(
+                                cueBall = currentGame.balls.firstOrNull { it.id == 0 },
+                                points = currentGame.cueTrajectory,
+                                color = Color.rgb(255, 255, 255),
+                            )
                             CorrectCueFinish(currentGame.cueTrajectory.lastOrNull())
                         }
                         predictedCueFinish?.let { point ->
@@ -537,32 +541,71 @@ private fun PredictionRailLayer(rails: Set<String>) {
 }
 
 @Composable
-private fun TrajectoryLayer(points: List<PredictionPoint>, color: Color) {
+private fun TrajectoryLayer(points: List<PredictionPoint>, color: Color, dashed: Boolean = false) {
     points.zipWithNext().forEach { (start, end) ->
-        val dx = end.xPercent - start.xPercent
-        val dy = (end.yPercent - start.yPercent) * PREDICTION_TABLE_HEIGHT_TO_WIDTH_RATIO
-        val length = sqrt(dx * dx + dy * dy)
-        val angle = atan2(dy, dx) * 180.0 / PI
-
-        Div(
-            attrs = Modifier
-                .position(Position.Absolute)
-                .left(start.xPercent.percent)
-                .top(start.yPercent.percent)
-                .width(length.percent)
-                .height(4.px)
-                .borderRadius(999.px)
-                .backgroundColor(color)
-                .styleModifier {
-                    property("transform", "translateY(-50%) rotate(${angle}deg)")
-                    property("transform-origin", "0 50%")
-                    property("box-shadow", "0 0 12px rgba(255,255,255,0.84), 0 1px 2px rgba(0,0,0,0.5)")
-                    property("pointer-events", "none")
-                }
-                .zIndex(6)
-                .toAttrs()
+        TrajectorySegment(
+            startXPercent = start.xPercent,
+            startYPercent = start.yPercent,
+            endXPercent = end.xPercent,
+            endYPercent = end.yPercent,
+            color = color,
+            dashed = dashed,
         )
     }
+}
+
+@Composable
+private fun CueTrajectoryLayer(cueBall: PredictionBall?, points: List<PredictionPoint>, color: Color) {
+    val firstPoint = points.firstOrNull()
+    if (cueBall != null && firstPoint != null) {
+        TrajectorySegment(
+            startXPercent = cueBall.xPercent,
+            startYPercent = cueBall.yPercent,
+            endXPercent = firstPoint.xPercent,
+            endYPercent = firstPoint.yPercent,
+            color = color,
+            dashed = true,
+        )
+    }
+
+    TrajectoryLayer(points, color, dashed = true)
+}
+
+@Composable
+private fun TrajectorySegment(
+    startXPercent: Double,
+    startYPercent: Double,
+    endXPercent: Double,
+    endYPercent: Double,
+    color: Color,
+    dashed: Boolean,
+) {
+    val dx = endXPercent - startXPercent
+    val dy = (endYPercent - startYPercent) * PREDICTION_TABLE_HEIGHT_TO_WIDTH_RATIO
+    val length = sqrt(dx * dx + dy * dy)
+    val angle = atan2(dy, dx) * 180.0 / PI
+    val baseModifier = Modifier
+        .position(Position.Absolute)
+        .left(startXPercent.percent)
+        .top(startYPercent.percent)
+        .width(length.percent)
+        .height(4.px)
+        .borderRadius(999.px)
+
+    Div(
+        attrs = (if (dashed) baseModifier else baseModifier.backgroundColor(color))
+            .styleModifier {
+                property("transform", "translateY(-50%) rotate(${angle}deg)")
+                property("transform-origin", "0 50%")
+                property("box-shadow", "0 0 12px rgba(255,255,255,0.84), 0 1px 2px rgba(0,0,0,0.5)")
+                property("pointer-events", "none")
+                if (dashed) {
+                    property("background-image", "repeating-linear-gradient(90deg, rgba(255,255,255,0.96) 0 10px, transparent 10px 16px)")
+                }
+            }
+            .zIndex(6)
+            .toAttrs()
+    )
 }
 
 @Composable
@@ -594,15 +637,15 @@ private fun CorrectCueFinish(point: PredictionPoint?) {
             .position(Position.Absolute)
             .left(point.xPercent.percent)
             .top(point.yPercent.percent)
-            .width(20.px)
-            .height(20.px)
-            .borderRadius(50.percent)
-            .border(3.px, LineStyle.Solid, Colors.White)
             .styleModifier {
+                property("width", "3.93%")
+                property("aspect-ratio", "1")
                 property("transform", "translate(-50%, -50%)")
                 property("box-shadow", "0 0 18px rgba(255,255,255,0.84)")
                 property("pointer-events", "none")
             }
+            .borderRadius(50.percent)
+            .border(3.px, LineStyle.Solid, Colors.White)
             .zIndex(9)
             .toAttrs()
     )
