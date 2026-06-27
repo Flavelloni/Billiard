@@ -1,6 +1,7 @@
 package com.varabyte.kobweb.site.pages
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -46,6 +47,7 @@ import com.varabyte.kobweb.site.components.layouts.PageLayoutData
 import com.varabyte.kobweb.site.components.widgets.CueBall
 import com.varabyte.kobweb.site.components.widgets.FeaturedPlayers
 import com.varabyte.kobweb.site.components.widgets.PoolBall
+import kotlinx.browser.window
 import org.jetbrains.compose.web.css.FlexWrap
 import org.jetbrains.compose.web.css.LineStyle
 import org.jetbrains.compose.web.css.Position
@@ -65,6 +67,9 @@ import kotlin.math.sqrt
 
 private const val PREDICTION_TABLE_HEIGHT_TO_WIDTH_RATIO = 1.0 / 0.5625
 private const val SWIPE_LEFT_THRESHOLD_PX = 70.0
+private const val PREDICTION_MOBILE_BREAKPOINT_PX = 768
+private const val PREDICTION_TABLE_BALL_WIDTH = "3.93%"
+private const val PREDICTION_MOBILE_TABLE_BALL_WIDTH = "4.4%"
 
 private data class GameEntry(val id: String, val metaPath: String, val csvPath: String)
 private data class GameMeta(
@@ -127,6 +132,7 @@ fun ShotPredictionPage() {
     var resolved by remember { mutableStateOf(false) }
     var tableElement by remember { mutableStateOf<HTMLElement?>(null) }
     var swipeStartX by remember { mutableStateOf<Double?>(null) }
+    val isMobile = rememberIsPredictionMobileLayout()
 
     LaunchedEffect(Unit) {
         loadPredictionGames(
@@ -280,7 +286,7 @@ fun ShotPredictionPage() {
                                 points = currentGame.cueTrajectory,
                                 color = Color.rgb(255, 255, 255),
                             )
-                            CorrectCueFinish(currentGame.cueTrajectory.lastOrNull())
+                            CorrectCueFinish(currentGame.cueTrajectory.lastOrNull(), isMobile)
                         }
                         predictedCueFinish?.let { point ->
                             PredictionCueFinish(point)
@@ -290,6 +296,7 @@ fun ShotPredictionPage() {
                                 ball = ball,
                                 selected = selectedObjectBall == ball.id,
                                 revealCorrect = resolved,
+                                isMobile = isMobile,
                                 onSelect = {
                                     if (!resolved && ball.id != 0) selectedObjectBall = ball.id
                                 },
@@ -312,6 +319,23 @@ private fun PredictionMessage(message: String) {
     ) {
         Text(message)
     }
+}
+
+@Composable
+private fun rememberIsPredictionMobileLayout(): Boolean {
+    var isMobile by remember { mutableStateOf(window.innerWidth <= PREDICTION_MOBILE_BREAKPOINT_PX) }
+
+    DisposableEffect(Unit) {
+        val listener: (dynamic) -> Unit = {
+            isMobile = window.innerWidth <= PREDICTION_MOBILE_BREAKPOINT_PX
+        }
+        window.addEventListener("resize", listener)
+        onDispose {
+            window.removeEventListener("resize", listener)
+        }
+    }
+
+    return isMobile
 }
 
 @Composable
@@ -444,16 +468,18 @@ private fun PredictionBallView(
     ball: PredictionBall,
     selected: Boolean,
     revealCorrect: Boolean,
+    isMobile: Boolean,
     onSelect: () -> Unit,
 ) {
     val isCorrectObject = revealCorrect && ball.highlighted
+    val ballWidth = if (isMobile) PREDICTION_MOBILE_TABLE_BALL_WIDTH else PREDICTION_TABLE_BALL_WIDTH
     Div(
         attrs = Modifier
             .position(Position.Absolute)
             .left(ball.xPercent.percent)
             .top(ball.yPercent.percent)
             .styleModifier {
-                property("width", "3.93%")
+                property("width", ballWidth)
                 property("aspect-ratio", "1")
                 property("transform", "translate(-50%, -50%)")
                 property("cursor", if (ball.id == 0 || revealCorrect) "default" else "pointer")
@@ -630,15 +656,16 @@ private fun PredictionCueFinish(point: Pair<Double, Double>) {
 }
 
 @Composable
-private fun CorrectCueFinish(point: PredictionPoint?) {
+private fun CorrectCueFinish(point: PredictionPoint?, isMobile: Boolean) {
     point ?: return
+    val ballWidth = if (isMobile) PREDICTION_MOBILE_TABLE_BALL_WIDTH else PREDICTION_TABLE_BALL_WIDTH
     Div(
         attrs = Modifier
             .position(Position.Absolute)
             .left(point.xPercent.percent)
             .top(point.yPercent.percent)
             .styleModifier {
-                property("width", "3.93%")
+                property("width", ballWidth)
                 property("aspect-ratio", "1")
                 property("transform", "translate(-50%, -50%)")
                 property("box-shadow", "0 0 18px rgba(255,255,255,0.84)")

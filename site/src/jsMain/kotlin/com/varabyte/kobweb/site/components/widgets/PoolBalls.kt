@@ -160,6 +160,7 @@ private fun BallNumber(number: Int) {
                 property("justify-content", "center")
                 property("transform", "translate(-50%, -50%)")
                 property("box-shadow", "inset 0 -1px 2px rgba(0,0,0,0.22)")
+                property("font-size", "clamp(8px, 2.35vw, 12px)")
             }
             .zIndex(2)
             .toAttrs()

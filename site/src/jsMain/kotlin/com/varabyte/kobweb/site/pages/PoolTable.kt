@@ -67,6 +67,9 @@ import kotlin.math.sqrt
 
 private const val LONG_PRESS_MS = 550
 private const val TABLE_HEIGHT_TO_WIDTH_RATIO = 1.0 / 0.5625
+private const val POOL_TABLE_MOBILE_BREAKPOINT_PX = 768
+private const val POOL_TABLE_BALL_WIDTH = "3.93%"
+private const val POOL_TABLE_MOBILE_BALL_WIDTH = "4.4%"
 
 private data class TableBall(val id: Int, val xPercent: Double, val yPercent: Double)
 private data class TrajectoryPoint(val order: Int, val xPercent: Double, val yPercent: Double)
@@ -142,6 +145,7 @@ fun PoolTablePage() {
     var cueBallTrajectoryPoints by remember { mutableStateOf(emptyList<TrajectoryPoint>()) }
     var objectBallTrajectoryPoints by remember { mutableStateOf(emptyList<TrajectoryPoint>()) }
     var tableElement by remember { mutableStateOf<HTMLElement?>(null) }
+    val isMobile = rememberIsPoolTableMobileLayout()
 
     val availableBallIds = ballIds.filterNot { id -> placedBalls.any { it.id == id } }
     val selectedBallIsAvailable = selectedBallId in availableBallIds
@@ -242,6 +246,7 @@ fun PoolTablePage() {
                 PlacedBallLayer(
                     placedBalls = placedBalls,
                     highlightedBallId = highlightedBallId,
+                    isMobile = isMobile,
                     onLongPress = { ballId ->
                         highlightedBallId = ballId
                     },
@@ -333,6 +338,23 @@ fun PoolTablePage() {
             Text("Save setup")
         }
     }
+}
+
+@Composable
+private fun rememberIsPoolTableMobileLayout(): Boolean {
+    var isMobile by remember { mutableStateOf(window.innerWidth <= POOL_TABLE_MOBILE_BREAKPOINT_PX) }
+
+    DisposableEffect(Unit) {
+        val listener: (dynamic) -> Unit = {
+            isMobile = window.innerWidth <= POOL_TABLE_MOBILE_BREAKPOINT_PX
+        }
+        window.addEventListener("resize", listener)
+        onDispose {
+            window.removeEventListener("resize", listener)
+        }
+    }
+
+    return isMobile
 }
 
 @Composable
@@ -657,6 +679,7 @@ private fun TrajectoryRecordingSurface(
 private fun PlacedBallLayer(
     placedBalls: List<TableBall>,
     highlightedBallId: Int?,
+    isMobile: Boolean,
     onLongPress: (Int) -> Unit,
     onDoubleClick: (Int) -> Unit,
 ) {
@@ -664,6 +687,7 @@ private fun PlacedBallLayer(
         LongPressBall(
             ball = ball,
             highlighted = ball.id == highlightedBallId,
+            isMobile = isMobile,
             onLongPress = onLongPress,
             onDoubleClick = onDoubleClick,
         )
@@ -674,10 +698,12 @@ private fun PlacedBallLayer(
 private fun LongPressBall(
     ball: TableBall,
     highlighted: Boolean,
+    isMobile: Boolean,
     onLongPress: (Int) -> Unit,
     onDoubleClick: (Int) -> Unit,
 ) {
     var timerId by remember(ball.id, ball.xPercent, ball.yPercent) { mutableStateOf<Int?>(null) }
+    val ballWidth = if (isMobile) POOL_TABLE_MOBILE_BALL_WIDTH else POOL_TABLE_BALL_WIDTH
 
     fun cancelTimer() {
         timerId?.let(window::clearTimeout)
@@ -694,7 +720,7 @@ private fun LongPressBall(
             .left(ball.xPercent.percent)
             .top(ball.yPercent.percent)
             .styleModifier {
-                property("width", "3.93%")
+                property("width", ballWidth)
                 property("aspect-ratio", "1")
                 property("transform", "translate(-50%, -50%)")
                 property("cursor", "pointer")
