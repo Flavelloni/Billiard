@@ -56,9 +56,45 @@ val generateGamesManifest by tasks.registering {
     }
 }
 
+val generateEightBallManifest by tasks.registering {
+    val eightBallDir = layout.projectDirectory.dir("src/jsMain/resources/public/8ball").asFile
+    val manifestFile = eightBallDir.resolve("index.json")
+
+    inputs.dir(eightBallDir)
+    outputs.file(manifestFile)
+
+    doLast {
+        eightBallDir.mkdirs()
+        val entries = eightBallDir.walkTopDown()
+            .filter { it.isDirectory }
+            .filter { shotDir ->
+                shotDir.resolve("meta.json").isFile &&
+                    shotDir.resolve("layout.jpg").isFile &&
+                    shotDir.resolve("clip.mp4").isFile
+            }
+            .sortedBy { it.relativeTo(eightBallDir).invariantSeparatorsPath }
+            .map { shotDir ->
+                val id = shotDir.relativeTo(eightBallDir).invariantSeparatorsPath
+
+                """
+                {
+                  "id": "$id",
+                  "metaPath": "/8ball/$id/meta.json",
+                  "imagePath": "/8ball/$id/layout.jpg",
+                  "videoPath": "/8ball/$id/clip.mp4"
+                }
+                """.trimIndent()
+            }
+            .toList()
+
+        manifestFile.writeText(entries.joinToString(prefix = "[\n", separator = ",\n", postfix = "\n]\n"))
+    }
+}
+
 tasks.configureEach {
     if (name == "jsProcessResources") {
         dependsOn(generateGamesManifest)
+        dependsOn(generateEightBallManifest)
     }
 }
 
