@@ -39,11 +39,6 @@ fun Footer(modifier: Modifier = Modifier) {
             )
             */
             TrainerBrand(iconSizePx = 24, textSizeRem = 0.95)
-            SpanText(
-                "Built for fractional overlap practice.",
-                Modifier.siteText(SiteTextSize.TINY).textAlign(TextAlign.Center),
-                MutedSpanTextVariant
-            )
         }
     }
 }

@@ -35,7 +35,7 @@ fun TrainerBrand(modifier: Modifier = Modifier, iconSizePx: Int = 34, textSizeRe
                     .fontWeight(FontWeight.SemiBold)
                     .toAttrs()
             ) {
-                Text("Fractional Aiming Trainer")
+                Text("Pool Buddy")
             }
         }
     }

@@ -62,8 +62,7 @@ import kotlin.math.abs
 import kotlin.random.Random
 
 private const val EIGHT_BALL_WHEEL_THRESHOLD = 56.0
-private const val EIGHT_BALL_NAVIGATION_COOLDOWN_MS = 650.0
-private const val EIGHT_BALL_SWIPE_THRESHOLD = 70.0
+private const val EIGHT_BALL_SLIDE_DURATION_MS = 320
 
 private data class EightBallEntry(
     val id: String,
@@ -77,6 +76,7 @@ private data class EightBallMeta(
     val opponent: String,
     val group: Int,
     val ball: Int,
+    val comments: String,
 )
 
 private data class EightBallShot(
@@ -98,8 +98,7 @@ private val negativeEightBallFeedback = listOf(
     "Different ball.",
     "Good try.",
     "Nope, another ball.",
-    "The table had other plans.",
-    "Missed read.",
+    "The table had other plans."
 )
 
 @InitRoute
@@ -118,8 +117,9 @@ fun EightBallPredictionPage() {
     var feedback by remember { mutableStateOf<String?>(null) }
     var videoEnded by remember { mutableStateOf(false) }
     var showStartLayout by remember { mutableStateOf(false) }
-    var lastNavigationAt by remember { mutableStateOf(0.0) }
     var videoElement by remember { mutableStateOf<HTMLVideoElement?>(null) }
+    var slideDelta by remember { mutableStateOf(0) }
+    var isSliding by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         loadEightBallShots(
@@ -145,18 +145,17 @@ fun EightBallPredictionPage() {
         showStartLayout = false
     }
 
-    fun goToShot(delta: Int) {
+    fun slideToShot(delta: Int) {
         val shotCount = loadedShots?.size ?: return
-        if (shotCount == 0) return
-        shotIndex = (shotIndex + delta + shotCount) % shotCount
+        if (shotCount == 0 || isSliding) return
         resetPrediction()
-    }
-
-    fun throttledGoToShot(delta: Int) {
-        val now = window.performance.now()
-        if (now - lastNavigationAt < EIGHT_BALL_NAVIGATION_COOLDOWN_MS) return
-        lastNavigationAt = now
-        goToShot(delta)
+        slideDelta = if (delta < 0) -1 else 1
+        isSliding = true
+        window.setTimeout({
+            shotIndex = (shotIndex + delta + shotCount) % shotCount
+            slideDelta = 0
+            isSliding = false
+        }, EIGHT_BALL_SLIDE_DURATION_MS)
     }
 
     fun predictBall(ball: Int, shot: EightBallShot) {
@@ -200,8 +199,11 @@ fun EightBallPredictionPage() {
             currentShot != null -> {
                 EightBallShotHeader(currentShot, shotIndex, loadedShots.size)
 
-                EightBallMedia(
-                    shot = currentShot,
+                EightBallCarousel(
+                    shots = loadedShots,
+                    currentIndex = shotIndex,
+                    slideDelta = slideDelta,
+                    isSliding = isSliding,
                     hasPrediction = selectedBall != null,
                     showStartLayout = showStartLayout && videoEnded,
                     canShowStartLayout = selectedBall != null && videoEnded,
@@ -212,8 +214,13 @@ fun EightBallPredictionPage() {
                         showStartLayout = false
                     },
                     onVideoElement = { videoElement = it },
-                    onWheelNavigate = ::throttledGoToShot,
-                    onSwipeNavigate = ::goToShot,
+                )
+
+                EightBallNavigation(
+                    index = shotIndex,
+                    total = loadedShots.size,
+                    onPrevious = { slideToShot(-1) },
+                    onNext = { slideToShot(1) },
                 )
 
                 EightBallFeedback(feedback, selectedBall == currentShot.meta.ball)
@@ -226,11 +233,6 @@ fun EightBallPredictionPage() {
                             predictBall(ball, currentShot)
                         }
                     },
-                )
-
-                EightBallNavigation(
-                    onPrevious = { goToShot(-1) },
-                    onNext = { goToShot(1) },
                 )
             }
         }
@@ -277,8 +279,10 @@ private fun EightBallShotHeader(shot: EightBallShot, index: Int, total: Int) {
                 .styleModifier { property("justify-content", "center") },
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            EightBallInfoChip("${shot.meta.player} shooting")
-            EightBallInfoChip(groupLabel(shot.meta))
+            EightBallInfoChip(shootingGroupLabel(shot.meta))
+            if (shot.meta.comments.isNotBlank()) {
+                EightBallInfoChip(shot.meta.comments)
+            }
             EightBallInfoChip("${index + 1} / $total")
         }
     }
@@ -301,8 +305,11 @@ private fun EightBallInfoChip(text: String) {
 }
 
 @Composable
-private fun EightBallMedia(
-    shot: EightBallShot,
+private fun EightBallCarousel(
+    shots: List<EightBallShot>,
+    currentIndex: Int,
+    slideDelta: Int,
+    isSliding: Boolean,
     hasPrediction: Boolean,
     showStartLayout: Boolean,
     canShowStartLayout: Boolean,
@@ -310,10 +317,15 @@ private fun EightBallMedia(
     onVideoEnded: () -> Unit,
     onVideoPlay: () -> Unit,
     onVideoElement: (HTMLVideoElement?) -> Unit,
-    onWheelNavigate: (Int) -> Unit,
-    onSwipeNavigate: (Int) -> Unit,
 ) {
-    var touchStart by remember(shot.entry.id) { mutableStateOf<Pair<Double, Double>?>(null) }
+    val previousShot = shots[(currentIndex - 1 + shots.size) % shots.size]
+    val currentShot = shots[currentIndex]
+    val nextShot = shots[(currentIndex + 1) % shots.size]
+    val transform = when {
+        !isSliding -> "translateX(-100%)"
+        slideDelta > 0 -> "translateX(-200%)"
+        else -> "translateX(0)"
+    }
 
     Div(
         attrs = Modifier
@@ -339,43 +351,77 @@ private fun EightBallMedia(
                     property("aspect-ratio", "16 / 9")
                     property("touch-action", "pan-y")
                 }
-                .toAttrs {
-                    onWheel { event ->
-                        if (abs(event.deltaY) >= EIGHT_BALL_WHEEL_THRESHOLD) {
-                            event.preventDefault()
-                            onWheelNavigate(if (event.deltaY > 0) 1 else -1)
-                        }
+                .toAttrs()
+        ) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .height(100.percent)
+                    .styleModifier {
+                        property("transform", transform)
+                        property("transition", if (isSliding) "transform ${EIGHT_BALL_SLIDE_DURATION_MS}ms cubic-bezier(0.22, 0.8, 0.22, 1)" else "none")
                     }
+            ) {
+                EightBallCarouselPanel(previousShot, isActive = false)
+                EightBallCarouselPanel(
+                    shot = currentShot,
+                    isActive = true,
+                    hasPrediction = hasPrediction,
+                    showStartLayout = showStartLayout,
+                    canShowStartLayout = canShowStartLayout,
+                    onShowStartLayoutChange = onShowStartLayoutChange,
+                    onVideoEnded = onVideoEnded,
+                    onVideoPlay = onVideoPlay,
+                    onVideoElement = onVideoElement,
+                )
+                EightBallCarouselPanel(nextShot, isActive = false)
+            }
+        }
+    }
+}
+
+@Composable
+private fun EightBallCarouselPanel(
+    shot: EightBallShot,
+    isActive: Boolean,
+    hasPrediction: Boolean = false,
+    showStartLayout: Boolean = false,
+    canShowStartLayout: Boolean = false,
+    onShowStartLayoutChange: (Boolean) -> Unit = {},
+    onVideoEnded: () -> Unit = {},
+    onVideoPlay: () -> Unit = {},
+    onVideoElement: (HTMLVideoElement?) -> Unit = {},
+) {
+    Div(
+        attrs = Modifier
+            .position(Position.Relative)
+            .width(100.percent)
+            .height(100.percent)
+            .styleModifier {
+                property("flex", "0 0 100%")
+                property("background", "#020405")
+            }
+            .toAttrs {
+                if (isActive) {
                     onMouseEnter {
                         if (canShowStartLayout) onShowStartLayoutChange(true)
                     }
                     onMouseLeave {
                         onShowStartLayoutChange(false)
                     }
-                    onTouchStart { event ->
-                        val touch = event.touches.item(0) ?: return@onTouchStart
-                        touchStart = Pair(touch.clientX.toDouble(), touch.clientY.toDouble())
+                    onTouchStart {
                         if (canShowStartLayout) onShowStartLayoutChange(true)
                     }
-                    onTouchEnd { event ->
+                    onTouchEnd {
                         onShowStartLayoutChange(false)
-                        val start = touchStart ?: return@onTouchEnd
-                        touchStart = null
-                        val touch = event.changedTouches.item(0) ?: return@onTouchEnd
-                        val deltaX = touch.clientX.toDouble() - start.first
-                        val deltaY = touch.clientY.toDouble() - start.second
-                        if (abs(deltaX) < EIGHT_BALL_SWIPE_THRESHOLD && abs(deltaY) < EIGHT_BALL_SWIPE_THRESHOLD) {
-                            return@onTouchEnd
-                        }
-                        val delta = if (abs(deltaY) >= abs(deltaX)) deltaY else deltaX
-                        onSwipeNavigate(if (delta < 0) 1 else -1)
                     }
                     onTouchCancel {
-                        touchStart = null
                         onShowStartLayoutChange(false)
                     }
                 }
-        ) {
+            }
+    ) {
+        if (isActive) {
             Video(
                 attrs = Modifier
                     .fillMaxWidth()
@@ -398,39 +444,24 @@ private fun EightBallMedia(
                         addEventListener("play") { onVideoPlay() }
                     }
             )
+        } else {
+            EightBallLayoutImage(shot)
+        }
 
-            if (!hasPrediction) {
-                Div(
-                    attrs = Modifier
-                        .position(Position.Absolute)
-                        .width(100.percent)
-                        .height(100.percent)
-                        .zIndex(2)
-                        .styleModifier {
-                            property("inset", "0")
-                            property("pointer-events", "none")
-                        }
-                        .toAttrs()
-                ) {
-                    EightBallLayoutImage(shot)
-                }
-            }
-
-            if (showStartLayout) {
-                Div(
-                    attrs = Modifier
-                        .position(Position.Absolute)
-                        .width(100.percent)
-                        .height(100.percent)
-                        .zIndex(2)
-                        .styleModifier {
-                            property("inset", "0")
-                            property("pointer-events", "none")
-                        }
-                        .toAttrs()
-                ) {
-                    EightBallLayoutImage(shot)
-                }
+        if (isActive && (!hasPrediction || showStartLayout)) {
+            Div(
+                attrs = Modifier
+                    .position(Position.Absolute)
+                    .width(100.percent)
+                    .height(100.percent)
+                    .zIndex(2)
+                    .styleModifier {
+                        property("inset", "0")
+                        property("pointer-events", "none")
+                    }
+                    .toAttrs()
+            ) {
+                EightBallLayoutImage(shot)
             }
         }
     }
@@ -532,17 +563,42 @@ private fun EightBallBallTray(
 }
 
 @Composable
-private fun EightBallNavigation(onPrevious: () -> Unit, onNext: () -> Unit) {
-    Row(
-        Modifier
+private fun EightBallNavigation(index: Int, total: Int, onPrevious: () -> Unit, onNext: () -> Unit) {
+    Div(
+        attrs = Modifier
             .fillMaxWidth()
-            .maxWidth(360.px)
-            .gap(0.7.cssRem)
-            .styleModifier { property("justify-content", "center") },
-        verticalAlignment = Alignment.CenterVertically,
+            .maxWidth(560.px)
+            .styleModifier {
+                property("margin-left", "auto")
+                property("margin-right", "auto")
+            }
+            .toAttrs {
+                onWheel { event ->
+                    if (abs(event.deltaX) >= EIGHT_BALL_WHEEL_THRESHOLD && abs(event.deltaX) > abs(event.deltaY)) {
+                        event.preventDefault()
+                        if (event.deltaX < 0) onPrevious() else onNext()
+                    }
+                }
+            }
     ) {
-        EightBallNavButton("Prev", onPrevious)
-        EightBallNavButton("Next", onNext)
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .gap(0.7.cssRem)
+                .styleModifier { property("justify-content", "center") },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            EightBallNavButton("<- Previous", onPrevious)
+            Span(
+                attrs = Modifier
+                    .color(Color.rgba(245, 248, 244, 0.72f))
+                    .fontSize(0.92.cssRem)
+                    .toAttrs()
+            ) {
+                Text("${index + 1} / $total")
+            }
+            EightBallNavButton("Next ->", onNext)
+        }
     }
 }
 
@@ -575,12 +631,12 @@ private fun buildEightBallFeedback(correct: Boolean, actualBall: Int): String {
     return "$lead It was the ${ballLabel(actualBall)} ball."
 }
 
-private fun groupLabel(meta: EightBallMeta): String {
+private fun shootingGroupLabel(meta: EightBallMeta): String {
     return when (meta.group) {
-        0 -> "Open table"
-        1 -> "${meta.player}: solids"
-        2 -> "${meta.player}: stripes"
-        else -> "${meta.player}: group ${meta.group}"
+        0 -> "${meta.player}, open table"
+        1 -> "${meta.player} shoots solids"
+        2 -> "${meta.player} shoots stripes"
+        else -> "${meta.player} shoots group ${meta.group}"
     }
 }
 
@@ -647,6 +703,7 @@ private fun parseEightBallMeta(text: String): EightBallMeta {
         opponent = (item.opponent as? String).orEmpty(),
         group = (item.group as? Int) ?: 0,
         ball = (item.ball as? Int) ?: -1,
+        comments = (item.comments as? String).orEmpty(),
     )
 }
 
