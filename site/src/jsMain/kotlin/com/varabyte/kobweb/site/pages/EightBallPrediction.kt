@@ -57,11 +57,14 @@ import org.jetbrains.compose.web.dom.P
 import org.jetbrains.compose.web.dom.Span
 import org.jetbrains.compose.web.dom.Text
 import org.jetbrains.compose.web.dom.Video
+import org.w3c.dom.HTMLElement
 import org.w3c.dom.HTMLVideoElement
 import kotlin.math.abs
 import kotlin.random.Random
 
 private const val EIGHT_BALL_WHEEL_THRESHOLD = 56.0
+private const val EIGHT_BALL_TOUCH_THRESHOLD = 64.0
+private const val EIGHT_BALL_DRAG_COMMIT_PERCENT = 18.0
 private const val EIGHT_BALL_SLIDE_DURATION_MS = 320
 
 private data class EightBallEntry(
@@ -120,6 +123,11 @@ fun EightBallPredictionPage() {
     var videoElement by remember { mutableStateOf<HTMLVideoElement?>(null) }
     var slideDelta by remember { mutableStateOf(0) }
     var isSliding by remember { mutableStateOf(false) }
+    var dragOffsetPercent by remember { mutableStateOf(0.0) }
+    var isDragSettling by remember { mutableStateOf(false) }
+    var swipeRegionElement by remember { mutableStateOf<HTMLElement?>(null) }
+    var touchStart by remember { mutableStateOf<Pair<Double, Double>?>(null) }
+    var touchIsHorizontal by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         loadEightBallShots(
@@ -143,6 +151,10 @@ fun EightBallPredictionPage() {
         feedback = null
         videoEnded = false
         showStartLayout = false
+        dragOffsetPercent = 0.0
+        isDragSettling = false
+        touchStart = null
+        touchIsHorizontal = false
     }
 
     fun slideToShot(delta: Int) {
@@ -154,7 +166,16 @@ fun EightBallPredictionPage() {
         window.setTimeout({
             shotIndex = (shotIndex + delta + shotCount) % shotCount
             slideDelta = 0
+            dragOffsetPercent = 0.0
             isSliding = false
+        }, EIGHT_BALL_SLIDE_DURATION_MS)
+    }
+
+    fun snapDragBack() {
+        isDragSettling = true
+        dragOffsetPercent = 0.0
+        window.setTimeout({
+            isDragSettling = false
         }, EIGHT_BALL_SLIDE_DURATION_MS)
     }
 
@@ -199,29 +220,83 @@ fun EightBallPredictionPage() {
             currentShot != null -> {
                 EightBallShotHeader(currentShot, shotIndex, loadedShots.size)
 
-                EightBallCarousel(
-                    shots = loadedShots,
-                    currentIndex = shotIndex,
-                    slideDelta = slideDelta,
-                    isSliding = isSliding,
-                    hasPrediction = selectedBall != null,
-                    showStartLayout = showStartLayout && videoEnded,
-                    canShowStartLayout = selectedBall != null && videoEnded,
-                    onShowStartLayoutChange = { showStartLayout = it },
-                    onVideoEnded = { videoEnded = true },
-                    onVideoPlay = {
-                        videoEnded = false
-                        showStartLayout = false
-                    },
-                    onVideoElement = { videoElement = it },
-                )
-
-                EightBallNavigation(
-                    index = shotIndex,
-                    total = loadedShots.size,
+                EightBallSwipeRegion(
+                    onRegionElement = { swipeRegionElement = it },
                     onPrevious = { slideToShot(-1) },
                     onNext = { slideToShot(1) },
+                    onTouchStart = { x, y ->
+                        if (!isSliding) {
+                            touchStart = Pair(x, y)
+                            touchIsHorizontal = false
+                            isDragSettling = false
+                        }
+                    },
+                    onTouchMove = { x, y, preventDefault ->
+                        val start = touchStart ?: return@EightBallSwipeRegion
+                        val deltaX = x - start.first
+                        val deltaY = y - start.second
+                        if (!touchIsHorizontal && abs(deltaX) > 10.0 && abs(deltaX) > abs(deltaY)) {
+                            touchIsHorizontal = true
+                        }
+                        if (touchIsHorizontal) {
+                            preventDefault()
+                            val width = swipeRegionElement?.getBoundingClientRect()?.width ?: 1.0
+                            dragOffsetPercent = (deltaX / width * 100.0).coerceIn(-100.0, 100.0)
+                        }
+                    },
+                    onTouchEnd = { x, y ->
+                        val start = touchStart
+                        touchStart = null
+                        if (start == null || !touchIsHorizontal) {
+                            touchIsHorizontal = false
+                            snapDragBack()
+                            return@EightBallSwipeRegion
+                        }
+
+                        val deltaX = x - start.first
+                        val deltaY = y - start.second
+                        touchIsHorizontal = false
+                        when {
+                            dragOffsetPercent <= -EIGHT_BALL_DRAG_COMMIT_PERCENT ||
+                                (abs(deltaX) >= EIGHT_BALL_TOUCH_THRESHOLD && abs(deltaX) > abs(deltaY) && deltaX < 0) -> slideToShot(1)
+                            dragOffsetPercent >= EIGHT_BALL_DRAG_COMMIT_PERCENT ||
+                                (abs(deltaX) >= EIGHT_BALL_TOUCH_THRESHOLD && abs(deltaX) > abs(deltaY) && deltaX > 0) -> slideToShot(-1)
+                            else -> snapDragBack()
+                        }
+                    },
+                    onTouchCancel = {
+                        touchStart = null
+                        touchIsHorizontal = false
+                        snapDragBack()
+                    },
                 )
+                {
+                    EightBallCarousel(
+                        shots = loadedShots,
+                        currentIndex = shotIndex,
+                        slideDelta = slideDelta,
+                        isSliding = isSliding,
+                        dragOffsetPercent = dragOffsetPercent,
+                        isDragSettling = isDragSettling,
+                        hasPrediction = selectedBall != null,
+                        showStartLayout = showStartLayout && videoEnded,
+                        canShowStartLayout = selectedBall != null && videoEnded,
+                        onShowStartLayoutChange = { showStartLayout = it },
+                        onVideoEnded = { videoEnded = true },
+                        onVideoPlay = {
+                            videoEnded = false
+                            showStartLayout = false
+                        },
+                        onVideoElement = { videoElement = it },
+                    )
+
+                    EightBallNavigation(
+                        index = shotIndex,
+                        total = loadedShots.size,
+                        onPrevious = { slideToShot(-1) },
+                        onNext = { slideToShot(1) },
+                    )
+                }
 
                 EightBallFeedback(feedback, selectedBall == currentShot.meta.ball)
 
@@ -283,7 +358,6 @@ private fun EightBallShotHeader(shot: EightBallShot, index: Int, total: Int) {
             if (shot.meta.comments.isNotBlank()) {
                 EightBallInfoChip(shot.meta.comments)
             }
-            EightBallInfoChip("${index + 1} / $total")
         }
     }
 }
@@ -305,11 +379,78 @@ private fun EightBallInfoChip(text: String) {
 }
 
 @Composable
+private fun EightBallSwipeRegion(
+    onRegionElement: (HTMLElement?) -> Unit,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    onTouchStart: (Double, Double) -> Unit,
+    onTouchMove: (Double, Double, () -> Unit) -> Unit,
+    onTouchEnd: (Double, Double) -> Unit,
+    onTouchCancel: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    Div(
+        attrs = Modifier
+            .fillMaxWidth()
+            .maxWidth(980.px)
+            .padding(topBottom = 0.2.cssRem)
+            .styleModifier {
+                property("touch-action", "pan-y pinch-zoom")
+                property("-webkit-tap-highlight-color", "transparent")
+                property("-webkit-user-select", "none")
+                property("user-select", "none")
+            }
+            .toAttrs {
+                ref { element ->
+                    onRegionElement(element)
+                    onDispose { onRegionElement(null) }
+                }
+                onWheel { event ->
+                    val horizontalDelta = when {
+                        abs(event.deltaX) >= EIGHT_BALL_WHEEL_THRESHOLD -> event.deltaX
+                        event.shiftKey && abs(event.deltaY) >= EIGHT_BALL_WHEEL_THRESHOLD -> event.deltaY
+                        else -> 0.0
+                    }
+                    if (horizontalDelta != 0.0) {
+                        event.preventDefault()
+                        if (horizontalDelta < 0) onPrevious() else onNext()
+                    }
+                }
+                onTouchStart { event ->
+                    val touch = event.touches.item(0) ?: return@onTouchStart
+                    onTouchStart(touch.clientX.toDouble(), touch.clientY.toDouble())
+                }
+                onTouchMove { event ->
+                    val touch = event.touches.item(0) ?: return@onTouchMove
+                    onTouchMove(touch.clientX.toDouble(), touch.clientY.toDouble()) {
+                        event.preventDefault()
+                    }
+                }
+                onTouchEnd { event ->
+                    val touch = event.changedTouches.item(0)
+                    if (touch == null) {
+                        onTouchCancel()
+                    } else {
+                        onTouchEnd(touch.clientX.toDouble(), touch.clientY.toDouble())
+                    }
+                }
+                onTouchCancel {
+                    onTouchCancel()
+                }
+            }
+    ) {
+        content()
+    }
+}
+
+@Composable
 private fun EightBallCarousel(
     shots: List<EightBallShot>,
     currentIndex: Int,
     slideDelta: Int,
     isSliding: Boolean,
+    dragOffsetPercent: Double,
+    isDragSettling: Boolean,
     hasPrediction: Boolean,
     showStartLayout: Boolean,
     canShowStartLayout: Boolean,
@@ -322,7 +463,7 @@ private fun EightBallCarousel(
     val currentShot = shots[currentIndex]
     val nextShot = shots[(currentIndex + 1) % shots.size]
     val transform = when {
-        !isSliding -> "translateX(-100%)"
+        !isSliding -> "translateX(${(-100.0 + dragOffsetPercent).coerceIn(-200.0, 0.0)}%)"
         slideDelta > 0 -> "translateX(-200%)"
         else -> "translateX(0)"
     }
@@ -349,7 +490,7 @@ private fun EightBallCarousel(
                 .backgroundColor(Color.rgb(2, 4, 5))
                 .styleModifier {
                     property("aspect-ratio", "16 / 9")
-                    property("touch-action", "pan-y")
+                    property("touch-action", "pan-y pinch-zoom")
                 }
                 .toAttrs()
         ) {
@@ -359,7 +500,7 @@ private fun EightBallCarousel(
                     .height(100.percent)
                     .styleModifier {
                         property("transform", transform)
-                        property("transition", if (isSliding) "transform ${EIGHT_BALL_SLIDE_DURATION_MS}ms cubic-bezier(0.22, 0.8, 0.22, 1)" else "none")
+                        property("transition", if (isSliding || isDragSettling) "transform ${EIGHT_BALL_SLIDE_DURATION_MS}ms cubic-bezier(0.22, 0.8, 0.22, 1)" else "none")
                     }
             ) {
                 EightBallCarouselPanel(previousShot, isActive = false)
@@ -400,6 +541,9 @@ private fun EightBallCarouselPanel(
             .styleModifier {
                 property("flex", "0 0 100%")
                 property("background", "#020405")
+                property("-webkit-tap-highlight-color", "transparent")
+                property("-webkit-user-select", "none")
+                property("user-select", "none")
             }
             .toAttrs {
                 if (isActive) {
@@ -429,13 +573,20 @@ private fun EightBallCarouselPanel(
                     .styleModifier {
                         property("object-fit", "contain")
                         property("background", "#020405")
+                        property("outline", "none")
+                        property("-webkit-tap-highlight-color", "transparent")
+                        property("-webkit-user-select", "none")
+                        property("user-select", "none")
+                        property("-webkit-user-drag", "none")
                     }
                     .toAttrs {
                         attr("src", BasePath.prependTo(shot.entry.videoPath))
                         attr("poster", BasePath.prependTo(shot.entry.imagePath))
-                        attr("controls", "")
                         attr("playsinline", "")
+                        //attr("controls", "")              // temporarily restore
+                        attr("disablepictureinpicture", "")
                         attr("preload", "auto")
+                        attr("tabindex", "-1")
                         ref { element ->
                             onVideoElement(element)
                             onDispose { onVideoElement(null) }
@@ -574,9 +725,14 @@ private fun EightBallNavigation(index: Int, total: Int, onPrevious: () -> Unit, 
             }
             .toAttrs {
                 onWheel { event ->
-                    if (abs(event.deltaX) >= EIGHT_BALL_WHEEL_THRESHOLD && abs(event.deltaX) > abs(event.deltaY)) {
+                    val horizontalDelta = when {
+                        abs(event.deltaX) >= EIGHT_BALL_WHEEL_THRESHOLD -> event.deltaX
+                        event.shiftKey && abs(event.deltaY) >= EIGHT_BALL_WHEEL_THRESHOLD -> event.deltaY
+                        else -> 0.0
+                    }
+                    if (horizontalDelta != 0.0) {
                         event.preventDefault()
-                        if (event.deltaX < 0) onPrevious() else onNext()
+                        if (horizontalDelta < 0) onPrevious() else onNext()
                     }
                 }
             }
