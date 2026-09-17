@@ -854,11 +854,12 @@ private fun EightBallFullscreenImage(
                 property("inset", "0")
                 property("width", "100vw")
                 property("height", "100vh")
-                property("background", "rgba(0, 0, 0, 0.96)")
+                property("background", "#000")
                 property("z-index", "10000")
                 property("display", "flex")
                 property("align-items", "center")
                 property("justify-content", "center")
+                property("overflow", "hidden")
             }
             .toAttrs()
     ) {
@@ -866,10 +867,9 @@ private fun EightBallFullscreenImage(
             src = BasePath.prependTo(shot.entry.imagePath),
             attrs = Modifier
                 .styleModifier {
-                    // Swap width/height because the image is rotated.
                     property("width", "100vh")
                     property("height", "100vw")
-                    property("object-fit", "contain")
+                    property("object-fit", "cover")
                     property("transform", "rotate(90deg)")
                     property("user-select", "none")
                     property("-webkit-user-select", "none")
@@ -892,18 +892,16 @@ private fun EightBallFullscreenImage(
                     property("padding", "0")
                     property("border", "none")
                     property("border-radius", "50%")
-                    property("background", "rgba(255, 255, 255, 0.16)")
+                    property("background", "rgba(0,0,0,0.65)")
                     property("color", "white")
                     property("font-size", "28px")
                     property("cursor", "pointer")
                     property("display", "flex")
                     property("align-items", "center")
                     property("justify-content", "center")
-                    property("backdrop-filter", "blur(10px)")
                 }
                 .toAttrs {
                     attr("aria-label", "Close fullscreen image")
-                    title("Close")
                     onClick { onClose() }
                 }
         ) {
