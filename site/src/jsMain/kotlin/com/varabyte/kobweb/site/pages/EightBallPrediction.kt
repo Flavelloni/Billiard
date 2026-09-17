@@ -128,6 +128,7 @@ fun EightBallPredictionPage() {
     var swipeRegionElement by remember { mutableStateOf<HTMLElement?>(null) }
     var touchStart by remember { mutableStateOf<Pair<Double, Double>?>(null) }
     var touchIsHorizontal by remember { mutableStateOf(false) }
+    var imageFullscreen by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         loadEightBallShots(
@@ -288,7 +289,15 @@ fun EightBallPredictionPage() {
                             showStartLayout = false
                         },
                         onVideoElement = { videoElement = it },
+                        onImageFullscreen = { imageFullscreen = true }
                     )
+
+                    if (imageFullscreen) {
+                        EightBallFullscreenImage(
+                            shot = currentShot,
+                            onClose = { imageFullscreen = false }
+                        )
+                    }
 
                     EightBallNavigation(
                         index = shotIndex,
@@ -458,6 +467,7 @@ private fun EightBallCarousel(
     onVideoEnded: () -> Unit,
     onVideoPlay: () -> Unit,
     onVideoElement: (HTMLVideoElement?) -> Unit,
+    onImageFullscreen: () -> Unit,
 ) {
     val previousShot = shots[(currentIndex - 1 + shots.size) % shots.size]
     val currentShot = shots[currentIndex]
@@ -514,6 +524,7 @@ private fun EightBallCarousel(
                     onVideoEnded = onVideoEnded,
                     onVideoPlay = onVideoPlay,
                     onVideoElement = onVideoElement,
+                    onImageFullscreen = onImageFullscreen,
                 )
                 EightBallCarouselPanel(nextShot, isActive = false)
             }
@@ -532,6 +543,7 @@ private fun EightBallCarouselPanel(
     onVideoEnded: () -> Unit = {},
     onVideoPlay: () -> Unit = {},
     onVideoElement: (HTMLVideoElement?) -> Unit = {},
+    onImageFullscreen: () -> Unit = {},
 ) {
     Div(
         attrs = Modifier
@@ -600,6 +612,7 @@ private fun EightBallCarouselPanel(
         }
 
         if (isActive && (!hasPrediction || showStartLayout)) {
+            // Image + swipe hint
             Div(
                 attrs = Modifier
                     .position(Position.Absolute)
@@ -613,6 +626,40 @@ private fun EightBallCarouselPanel(
                     .toAttrs()
             ) {
                 EightBallLayoutImage(shot)
+
+            }
+
+            // Fullscreen button — deliberately outside the pointer-events:none overlay
+            Button(
+                attrs = Modifier
+                    .position(Position.Absolute)
+                    .zIndex(10)
+                    .styleModifier {
+                        property("top", "12px")
+                        property("right", "12px")
+                        property("width", "44px")
+                        property("height", "44px")
+                        property("padding", "0")
+                        property("border", "none")
+                        property("border-radius", "50%")
+                        property("background", "rgba(0,0,0,0.65)")
+                        property("color", "white")
+                        property("font-size", "22px")
+                        property("cursor", "pointer")
+                        property("display", "flex")
+                        property("align-items", "center")
+                        property("justify-content", "center")
+                        property("backdrop-filter", "blur(8px)")
+                    }
+                    .toAttrs {
+                        attr("aria-label", "View image fullscreen")
+                        title("View image fullscreen")
+                        onClick {
+                            onImageFullscreen()
+                        }
+                    }
+            ) {
+                Text("⛶")
             }
         }
     }
@@ -737,24 +784,38 @@ private fun EightBallNavigation(index: Int, total: Int, onPrevious: () -> Unit, 
                 }
             }
     ) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .gap(0.7.cssRem)
-                .styleModifier { property("justify-content", "center") },
-            verticalAlignment = Alignment.CenterVertically,
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            EightBallNavButton("<- Previous", onPrevious)
             Span(
                 attrs = Modifier
-                    .color(Color.rgba(245, 248, 244, 0.72f))
-                    .fontSize(0.92.cssRem)
+                    .padding(topBottom = 0.4.cssRem)
+                    .color(Color.rgba(245, 248, 244, 0.55f))
+                    .fontSize(0.82.cssRem)
                     .toAttrs()
             ) {
-                Text("${index + 1} / $total")
+                Text("← Swipe to change setup →")
             }
-            EightBallNavButton("Next ->", onNext)
-        }
+
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .gap(0.7.cssRem)
+                    .styleModifier { property("justify-content", "center") },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                EightBallNavButton("‹ Previous", onPrevious)
+                Span(
+                    attrs = Modifier
+                        .color(Color.rgba(245, 248, 244, 0.72f))
+                        .fontSize(0.92.cssRem)
+                        .toAttrs()
+                ) {
+                    Text("${index + 1} / $total")
+                }
+                EightBallNavButton("Next ›", onNext)
+            }
+            }
     }
 }
 
@@ -775,6 +836,79 @@ private fun EightBallNavButton(label: String, onClick: () -> Unit) {
             }
     ) {
         Text(label)
+    }
+}
+
+
+@Composable
+private fun EightBallFullscreenImage(
+    shot: EightBallShot?,
+    onClose: () -> Unit,
+) {
+    if (shot == null) return
+
+    Div(
+        attrs = Modifier
+            .position(Position.Fixed)
+            .styleModifier {
+                property("inset", "0")
+                property("width", "100vw")
+                property("height", "100vh")
+                property("background", "rgba(0, 0, 0, 0.96)")
+                property("z-index", "10000")
+                property("display", "flex")
+                property("align-items", "center")
+                property("justify-content", "center")
+            }
+            .toAttrs()
+    ) {
+        Img(
+            src = BasePath.prependTo(shot.entry.imagePath),
+            attrs = Modifier
+                .styleModifier {
+                    // Swap width/height because the image is rotated.
+                    property("width", "100vh")
+                    property("height", "100vw")
+                    property("object-fit", "contain")
+                    property("transform", "rotate(90deg)")
+                    property("user-select", "none")
+                    property("-webkit-user-select", "none")
+                    property("-webkit-user-drag", "none")
+                }
+                .toAttrs {
+                    attr("alt", "8-ball layout")
+                    attr("draggable", "false")
+                }
+        )
+
+        Button(
+            attrs = Modifier
+                .position(Position.Absolute)
+                .styleModifier {
+                    property("right", "18px")
+                    property("top", "18px")
+                    property("width", "48px")
+                    property("height", "48px")
+                    property("padding", "0")
+                    property("border", "none")
+                    property("border-radius", "50%")
+                    property("background", "rgba(255, 255, 255, 0.16)")
+                    property("color", "white")
+                    property("font-size", "28px")
+                    property("cursor", "pointer")
+                    property("display", "flex")
+                    property("align-items", "center")
+                    property("justify-content", "center")
+                    property("backdrop-filter", "blur(10px)")
+                }
+                .toAttrs {
+                    attr("aria-label", "Close fullscreen image")
+                    title("Close")
+                    onClick { onClose() }
+                }
+        ) {
+            Text("×")
+        }
     }
 }
 
@@ -866,3 +1000,4 @@ private fun parseEightBallMeta(text: String): EightBallMeta {
 private fun fetchEightBallText(url: String, onSuccess: (String) -> Unit, onError: (String) -> Unit) {
     js("fetch(url).then(function(response) { if (!response.ok) { throw new Error(response.status + ' ' + response.statusText); } return response.text(); }).then(function(text) { onSuccess(text); }).catch(function(error) { onError(String(error)); });")
 }
+
