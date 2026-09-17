@@ -867,9 +867,10 @@ private fun EightBallFullscreenImage(
             src = BasePath.prependTo(shot.entry.imagePath),
             attrs = Modifier
                 .styleModifier {
-                    property("width", "100vh")
-                    property("height", "100vw")
-                    property("object-fit", "cover")
+                    property("width", "100dvh")
+                    property("height", "auto")
+                    property("max-width", "none")
+                    property("max-height", "none")
                     property("transform", "rotate(90deg)")
                     property("user-select", "none")
                     property("-webkit-user-select", "none")
