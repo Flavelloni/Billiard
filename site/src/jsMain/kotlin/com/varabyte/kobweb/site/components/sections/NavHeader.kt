@@ -1,9 +1,8 @@
 package com.varabyte.kobweb.site.components.sections
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import com.varabyte.kobweb.compose.css.CSSLengthNumericValue
+import com.varabyte.kobweb.compose.css.FontWeight
 import com.varabyte.kobweb.compose.css.StyleVariable
 import com.varabyte.kobweb.compose.css.functions.blur
 import com.varabyte.kobweb.compose.css.functions.saturate
@@ -15,9 +14,9 @@ import com.varabyte.kobweb.compose.ui.Modifier
 import com.varabyte.kobweb.compose.ui.graphics.Color
 import com.varabyte.kobweb.compose.ui.graphics.Colors
 import com.varabyte.kobweb.compose.ui.modifiers.*
+import com.varabyte.kobweb.compose.ui.styleModifier
 import com.varabyte.kobweb.compose.ui.toAttrs
-import com.varabyte.kobweb.silk.components.icons.MoonIcon
-import com.varabyte.kobweb.silk.components.icons.SunIcon
+import com.varabyte.kobweb.navigation.Anchor
 import com.varabyte.kobweb.silk.init.InitSilk
 import com.varabyte.kobweb.silk.init.InitSilkContext
 import com.varabyte.kobweb.silk.style.CssStyle
@@ -32,11 +31,12 @@ import com.varabyte.kobweb.silk.theme.colors.palette.toPalette
 import com.varabyte.kobweb.silk.theme.colors.shifted
 import com.varabyte.kobweb.site.components.style.dividerBoxShadow
 import org.jetbrains.compose.web.css.Position
+import org.jetbrains.compose.web.css.LineStyle
 import org.jetbrains.compose.web.css.cssRem
 import org.jetbrains.compose.web.css.percent
 import org.jetbrains.compose.web.css.px
-import org.jetbrains.compose.web.dom.Button
-import org.jetbrains.compose.web.dom.Div
+import org.jetbrains.compose.web.dom.Span
+import org.jetbrains.compose.web.dom.Text
 
 val NavHeaderHeight by StyleVariable<CSSLengthNumericValue>()
 
@@ -91,7 +91,6 @@ fun Modifier.navHeaderZIndex() = this.zIndex(10)
 @OptIn(ExperimentalJsCollectionsApi::class, ExperimentalJsExport::class)
 @Composable
 fun NavHeader() {
-    var colorMode by ColorMode.currentState
     Box(NavHeaderStyle.toModifier().navHeaderZIndex(), contentAlignment = Alignment.Center) {
         Row(
             Modifier.fillMaxWidth(90.percent),
@@ -107,40 +106,46 @@ fun NavHeader() {
                     .fontSize(1.5.cssRem),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                /*
-                Search()
-
-                Link("https://github.com/varabyte/kobweb", HoverBrightenStyle.toModifier()) {
-                    FaGithub()
-                }
-                Tooltip(ElementTarget.PreviousSibling, "Kobweb source on GitHub", Modifier.navHeaderZIndex())
-
-                Link("https://discord.gg/5NZ2GKV5Cs", HoverBrightenStyle.toModifier()) {
-                    FaDiscord()
-                }
-                Tooltip(ElementTarget.PreviousSibling, "Chat with us on Discord", Modifier.navHeaderZIndex())
-                */
-
-                Button(
-                    attrs = HoverBrightenStyle.toModifier()
-                        .padding(6.px)
-                        .borderRadius(999.px)
-                        .toAttrs {
-                            style { property("cursor", "pointer") }
-                            style { property("touch-action", "manipulation") }
-                            onClick { colorMode = colorMode.opposite }
-                            onTouchStart {
-                                it.preventDefault()
-                                colorMode = colorMode.opposite
-                            }
-                        }
-                ) {
-                    when (colorMode) {
-                        ColorMode.DARK -> SunIcon()
-                        ColorMode.LIGHT -> MoonIcon()
-                    }
-                }
+                HeaderToolLink("AIM", "/pool-trainer", "Fractional aiming")
+                HeaderToolLink("OBK", "/obk-fargo", "OBK Fargo rating")
+                HeaderToolLink("8", "/8-ball-prediction", "8 ball prediction")
             }
+        }
+    }
+}
+
+@Composable
+private fun HeaderToolLink(label: String, href: String, title: String) {
+    Anchor(
+        href = href,
+        attrs = Modifier
+            .padding(leftRight = 0.72.cssRem, topBottom = 0.45.cssRem)
+            .borderRadius(999.px)
+            .backgroundColor(Color.rgba(255, 255, 255, 0.07f))
+            .border(1.px, LineStyle.Solid, Color.rgba(255, 255, 255, 0.14f))
+            .color(Color.rgba(245, 248, 244, 0.86f))
+            .styleModifier {
+                property("text-decoration", "none")
+                property("display", "inline-flex")
+                property("align-items", "center")
+                property("justify-content", "center")
+                property("min-width", "42px")
+                property("height", "34px")
+                property("box-sizing", "border-box")
+                property("touch-action", "manipulation")
+            }
+            .toAttrs {
+                attr("aria-label", title)
+                attr("title", title)
+            }
+    ) {
+        Span(
+            attrs = Modifier
+                .fontSize(if (label == "8") 1.1.cssRem else 0.78.cssRem)
+                .fontWeight(FontWeight.Bold)
+                .toAttrs()
+        ) {
+            Text(label)
         }
     }
 }

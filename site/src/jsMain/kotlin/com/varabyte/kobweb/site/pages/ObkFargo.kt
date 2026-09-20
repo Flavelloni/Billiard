@@ -1,0 +1,839 @@
+package com.varabyte.kobweb.site.pages
+
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import com.varabyte.kobweb.compose.css.FontWeight
+import com.varabyte.kobweb.compose.foundation.layout.Column
+import com.varabyte.kobweb.compose.foundation.layout.Row
+import com.varabyte.kobweb.compose.ui.Alignment
+import com.varabyte.kobweb.compose.ui.Modifier
+import com.varabyte.kobweb.compose.ui.graphics.Color
+import com.varabyte.kobweb.compose.ui.graphics.Colors
+import com.varabyte.kobweb.compose.ui.modifiers.backgroundColor
+import com.varabyte.kobweb.compose.ui.modifiers.border
+import com.varabyte.kobweb.compose.ui.modifiers.borderRadius
+import com.varabyte.kobweb.compose.ui.modifiers.color
+import com.varabyte.kobweb.compose.ui.modifiers.fillMaxWidth
+import com.varabyte.kobweb.compose.ui.modifiers.flexWrap
+import com.varabyte.kobweb.compose.ui.modifiers.fontSize
+import com.varabyte.kobweb.compose.ui.modifiers.fontWeight
+import com.varabyte.kobweb.compose.ui.modifiers.gap
+import com.varabyte.kobweb.compose.ui.modifiers.lineHeight
+import com.varabyte.kobweb.compose.ui.modifiers.margin
+import com.varabyte.kobweb.compose.ui.modifiers.maxWidth
+import com.varabyte.kobweb.compose.ui.modifiers.padding
+import com.varabyte.kobweb.compose.ui.modifiers.width
+import com.varabyte.kobweb.compose.ui.styleModifier
+import com.varabyte.kobweb.compose.ui.toAttrs
+import com.varabyte.kobweb.core.Page
+import com.varabyte.kobweb.core.data.add
+import com.varabyte.kobweb.core.init.InitRoute
+import com.varabyte.kobweb.core.init.InitRouteContext
+import com.varabyte.kobweb.core.layout.Layout
+import com.varabyte.kobweb.navigation.BasePath
+import com.varabyte.kobweb.site.components.layouts.PageLayoutData
+import org.jetbrains.compose.web.attributes.InputType
+import org.jetbrains.compose.web.css.FlexWrap
+import org.jetbrains.compose.web.css.LineStyle
+import org.jetbrains.compose.web.css.cssRem
+import org.jetbrains.compose.web.css.fr
+import org.jetbrains.compose.web.css.percent
+import org.jetbrains.compose.web.css.px
+import org.jetbrains.compose.web.dom.Button
+import org.jetbrains.compose.web.dom.Div
+import org.jetbrains.compose.web.dom.H1
+import org.jetbrains.compose.web.dom.H2
+import org.jetbrains.compose.web.dom.Input
+import org.jetbrains.compose.web.dom.P
+import org.jetbrains.compose.web.dom.Span
+import org.jetbrains.compose.web.dom.Text
+import kotlin.math.abs
+import kotlin.math.pow
+
+private data class FargoPlayer(
+    val id: String,
+    val name: String,
+    val fargoRating: Double,
+    val latestHandicap: Double?,
+    val games: Int,
+    val wins: Int,
+    val losses: Int,
+)
+
+private enum class FargoSortMode {
+    Fargo,
+    Obk,
+}
+
+@InitRoute
+fun initObkFargoPage(ctx: InitRouteContext) {
+    ctx.data.add(PageLayoutData("OBK Fargo Rating", "Oslo Biljardklubb Fargo-style ratings and matchup helper."))
+}
+
+@Page("/obk-fargo")
+@Composable
+@Layout(".components.layouts.PageLayout")
+fun ObkFargoPage() {
+    var players by remember { mutableStateOf<List<FargoPlayer>?>(null) }
+    var historyYears by remember { mutableStateOf<String?>(null) }
+    var loadError by remember { mutableStateOf<String?>(null) }
+    var sortMode by remember { mutableStateOf(FargoSortMode.Fargo) }
+    var playerFilter by remember { mutableStateOf("") }
+    var firstQuery by remember { mutableStateOf("") }
+    var secondQuery by remember { mutableStateOf("") }
+    var firstPlayer by remember { mutableStateOf<FargoPlayer?>(null) }
+    var secondPlayer by remember { mutableStateOf<FargoPlayer?>(null) }
+
+    LaunchedEffect(Unit) {
+        fetchFargoText(
+            BasePath.prependTo("/fargo/player_fargo_ratings.csv"),
+            onSuccess = {
+                players = parseFargoPlayers(it)
+                loadError = null
+            },
+            onError = { loadError = "Could not load Fargo ratings: $it" },
+        )
+        fetchFargoText(
+            BasePath.prependTo("/fargo/meta.json"),
+            onSuccess = { historyYears = parseFargoHistoryYears(it) },
+            onError = { historyYears = null },
+        )
+    }
+
+    val loadedPlayers = players.orEmpty()
+    val filteredPlayers = loadedPlayers
+        .filter { playerFilter.isBlank() || it.name.contains(playerFilter, ignoreCase = true) }
+        .sortedWith(
+            when (sortMode) {
+                FargoSortMode.Fargo -> compareByDescending<FargoPlayer> { it.fargoRating }.thenBy { it.name }
+                FargoSortMode.Obk -> compareByDescending<FargoPlayer> { it.latestHandicap ?: Double.NEGATIVE_INFINITY }.thenBy { it.name }
+            }
+        )
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(leftRight = 1.25.cssRem, top = 2.cssRem, bottom = 4.cssRem)
+            .gap(1.4.cssRem)
+            .styleModifier {
+                property("min-height", "calc(100vh - 64px)")
+                property("background", "linear-gradient(145deg, #071012 0%, #13201b 48%, #15131d 100%)")
+            },
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .maxWidth(1180.px)
+                .gap(1.cssRem),
+        ) {
+            H1(
+                attrs = Modifier
+                    .margin(0.px)
+                    .fontSize(2.55.cssRem)
+                    .lineHeight(1.05)
+                    .fontWeight(FontWeight.Bold)
+                    .color(Colors.White)
+                    .toAttrs()
+            ) {
+                Text("OBK Fargo Rating")
+            }
+            P(
+                attrs = Modifier
+                    .margin(0.px)
+                    .maxWidth(860.px)
+                    .fontSize(1.02.cssRem)
+                    .lineHeight(1.6)
+                    .color(Color.rgba(245, 248, 244, 0.76f))
+                    .toAttrs()
+            ) {
+                Text("Ratings are calculated solely from Oslo Biljardklubb tournaments from the last ${historyYears ?: "?"} years.")
+            }
+        }
+
+        when {
+            loadError != null -> FargoMessage(loadError ?: "Could not load Fargo ratings.")
+            players == null -> FargoMessage("Loading ratings...")
+            else -> {
+                MatchupPanel(
+                    players = loadedPlayers,
+                    firstQuery = firstQuery,
+                    secondQuery = secondQuery,
+                    firstPlayer = firstPlayer,
+                    secondPlayer = secondPlayer,
+                    onFirstQuery = {
+                        firstQuery = it
+                        firstPlayer = null
+                    },
+                    onSecondQuery = {
+                        secondQuery = it
+                        secondPlayer = null
+                    },
+                    onFirstPlayer = {
+                        firstPlayer = it
+                        firstQuery = it.name
+                    },
+                    onSecondPlayer = {
+                        secondPlayer = it
+                        secondQuery = it.name
+                    },
+                )
+
+                PlayerListPanel(
+                    players = filteredPlayers,
+                    totalPlayers = loadedPlayers.size,
+                    sortMode = sortMode,
+                    filter = playerFilter,
+                    onSortMode = { sortMode = it },
+                    onFilter = { playerFilter = it },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun FargoMessage(message: String) {
+    P(
+        attrs = Modifier
+            .fillMaxWidth()
+            .maxWidth(1180.px)
+            .margin(0.px)
+            .fontSize(1.cssRem)
+            .color(Color.rgba(245, 248, 244, 0.78f))
+            .toAttrs()
+    ) {
+        Text(message)
+    }
+}
+
+@Composable
+private fun MatchupPanel(
+    players: List<FargoPlayer>,
+    firstQuery: String,
+    secondQuery: String,
+    firstPlayer: FargoPlayer?,
+    secondPlayer: FargoPlayer?,
+    onFirstQuery: (String) -> Unit,
+    onSecondQuery: (String) -> Unit,
+    onFirstPlayer: (FargoPlayer) -> Unit,
+    onSecondPlayer: (FargoPlayer) -> Unit,
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .maxWidth(1180.px)
+            .padding(1.15.cssRem)
+            .borderRadius(24.px)
+            .backgroundColor(Color.rgba(255, 255, 255, 0.08f))
+            .border(1.px, LineStyle.Solid, Color.rgba(255, 255, 255, 0.15f))
+            .styleModifier { property("box-shadow", "0 26px 70px rgba(0, 0, 0, 0.28)") }
+            .gap(1.cssRem)
+    ) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .gap(1.cssRem)
+                .flexWrap(FlexWrap.Wrap),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Column(
+                Modifier
+                    .gap(0.45.cssRem)
+                    .styleModifier { property("flex", "1 1 260px") }
+            ) {
+                H2(
+                    attrs = Modifier
+                        .margin(0.px)
+                        .fontSize(1.45.cssRem)
+                        .lineHeight(1.2)
+                        .fontWeight(FontWeight.Bold)
+                        .color(Colors.White)
+                        .toAttrs()
+                ) {
+                    Text("Matchup Helper")
+                }
+                P(
+                    attrs = Modifier
+                        .margin(0.px)
+                        .fontSize(0.95.cssRem)
+                        .lineHeight(1.55)
+                        .color(Color.rgba(245, 248, 244, 0.72f))
+                        .toAttrs()
+                ) {
+                    Text("Search two players, confirm the names, then compare ratings, OBK records, expected win chances, and fair race spots.")
+                }
+            }
+            Row(
+                Modifier
+                    .gap(0.85.cssRem)
+                    .flexWrap(FlexWrap.Wrap)
+                    .styleModifier { property("flex", "2 1 560px") },
+                verticalAlignment = Alignment.Top,
+            ) {
+                PlayerPicker("Player A", firstQuery, firstPlayer, players, onFirstQuery, onFirstPlayer)
+                PlayerPicker("Player B", secondQuery, secondPlayer, players, onSecondQuery, onSecondPlayer)
+            }
+        }
+
+        MatchupResult(firstPlayer, secondPlayer)
+    }
+}
+
+@Composable
+private fun PlayerPicker(
+    label: String,
+    query: String,
+    selectedPlayer: FargoPlayer?,
+    players: List<FargoPlayer>,
+    onQuery: (String) -> Unit,
+    onSelect: (FargoPlayer) -> Unit,
+) {
+    val suggestions = players
+        .filter { query.isNotBlank() && it.name.contains(query, ignoreCase = true) }
+        .sortedBy { it.name }
+        .take(5)
+
+    Column(
+        Modifier
+            .gap(0.45.cssRem)
+            .styleModifier { property("flex", "1 1 250px") }
+    ) {
+        Span(
+            attrs = Modifier
+                .fontSize(0.82.cssRem)
+                .fontWeight(FontWeight.Bold)
+                .color(Color.rgba(245, 248, 244, 0.72f))
+                .toAttrs()
+        ) {
+            Text(label)
+        }
+        FargoInput(
+            value = query,
+            placeholder = "Search player",
+            onValue = onQuery,
+        )
+        if (selectedPlayer != null) {
+            FargoChip("Confirmed: ${selectedPlayer.name}")
+        } else if (suggestions.isNotEmpty()) {
+            Column(Modifier.gap(0.35.cssRem)) {
+                suggestions.forEach { player ->
+                    Button(
+                        attrs = Modifier
+                            .fillMaxWidth()
+                            .padding(leftRight = 0.75.cssRem, topBottom = 0.5.cssRem)
+                            .borderRadius(12.px)
+                            .backgroundColor(Color.rgba(255, 255, 255, 0.08f))
+                            .border(1.px, LineStyle.Solid, Color.rgba(255, 255, 255, 0.12f))
+                            .color(Colors.White)
+                            .styleModifier {
+                                property("cursor", "pointer")
+                                property("text-align", "left")
+                            }
+                            .toAttrs { onClick { onSelect(player) } }
+                    ) {
+                        Text("${player.name} (${formatRating(player.fargoRating)})")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MatchupResult(firstPlayer: FargoPlayer?, secondPlayer: FargoPlayer?) {
+    when {
+        firstPlayer == null || secondPlayer == null -> {
+            P(
+                attrs = Modifier
+                    .margin(0.px)
+                    .padding(top = 0.25.cssRem)
+                    .fontSize(0.95.cssRem)
+                    .lineHeight(1.55)
+                    .color(Color.rgba(245, 248, 244, 0.66f))
+                    .toAttrs()
+            ) {
+                Text("Confirm both player names to show the matchup.")
+            }
+        }
+        firstPlayer.id == secondPlayer.id -> FargoMessage("Pick two different players.")
+        else -> {
+            val firstProbability = fargoGameProbability(firstPlayer.fargoRating, secondPlayer.fargoRating)
+            val secondProbability = 1.0 - firstProbability
+
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(1.cssRem)
+                    .borderRadius(18.px)
+                    .backgroundColor(Color.rgba(0, 0, 0, 0.18f))
+                    .border(1.px, LineStyle.Solid, Color.rgba(255, 255, 255, 0.12f))
+                    .gap(0.9.cssRem)
+            ) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .gap(0.85.cssRem)
+                        .flexWrap(FlexWrap.Wrap),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    PlayerComparisonCard(firstPlayer, firstProbability)
+                    PlayerComparisonCard(secondPlayer, secondProbability)
+                }
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .gap(0.7.cssRem)
+                        .flexWrap(FlexWrap.Wrap),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    RaceSuggestionCard(4, firstPlayer, secondPlayer, firstProbability)
+                    RaceSuggestionCard(5, firstPlayer, secondPlayer, firstProbability)
+                }
+                P(
+                    attrs = Modifier
+                        .margin(0.px)
+                        .fontSize(0.88.cssRem)
+                        .lineHeight(1.5)
+                        .color(Color.rgba(245, 248, 244, 0.6f))
+                        .toAttrs()
+                ) {
+                    Text("The CSV contains aggregate OBK records, not direct opponent-by-opponent match history. The head-to-head figures here are calculated from Fargo rating difference.")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlayerComparisonCard(player: FargoPlayer, probability: Double) {
+    Column(
+        Modifier
+            .padding(0.85.cssRem)
+            .borderRadius(16.px)
+            .backgroundColor(Color.rgba(255, 255, 255, 0.07f))
+            .border(1.px, LineStyle.Solid, Color.rgba(255, 255, 255, 0.1f))
+            .gap(0.35.cssRem)
+            .styleModifier { property("flex", "1 1 260px") }
+    ) {
+        Span(
+            attrs = Modifier
+                .fontSize(1.05.cssRem)
+                .fontWeight(FontWeight.Bold)
+                .color(Colors.White)
+                .toAttrs()
+        ) {
+            Text(player.name)
+        }
+        FargoStatLine("Fargo", formatRating(player.fargoRating))
+        FargoStatLine("Simple OBK", formatOptionalRating(player.latestHandicap))
+        FargoStatLine("OBK record", "${player.wins}-${player.losses} (${player.games} games)")
+        FargoStatLine("Expected rack win", formatPercent(probability))
+    }
+}
+
+@Composable
+private fun RaceSuggestionCard(raceTo: Int, firstPlayer: FargoPlayer, secondPlayer: FargoPlayer, firstProbability: Double) {
+    val suggestion = raceSpotSuggestion(raceTo, firstPlayer, secondPlayer, firstProbability)
+    Column(
+        Modifier
+            .padding(0.85.cssRem)
+            .borderRadius(16.px)
+            .backgroundColor(Color.rgba(239, 190, 83, 0.12f))
+            .border(1.px, LineStyle.Solid, Color.rgba(239, 190, 83, 0.3f))
+            .gap(0.35.cssRem)
+            .styleModifier { property("flex", "1 1 260px") }
+    ) {
+        Span(
+            attrs = Modifier
+                .fontSize(0.85.cssRem)
+                .fontWeight(FontWeight.Bold)
+                .color(Color.rgb(239, 210, 133))
+                .toAttrs()
+        ) {
+            Text("Race to $raceTo")
+        }
+        Span(
+            attrs = Modifier
+                .fontSize(1.02.cssRem)
+                .lineHeight(1.45)
+                .fontWeight(FontWeight.SemiBold)
+                .color(Colors.White)
+                .toAttrs()
+        ) {
+            Text(suggestion)
+        }
+    }
+}
+
+@Composable
+private fun PlayerListPanel(
+    players: List<FargoPlayer>,
+    totalPlayers: Int,
+    sortMode: FargoSortMode,
+    filter: String,
+    onSortMode: (FargoSortMode) -> Unit,
+    onFilter: (String) -> Unit,
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .maxWidth(1180.px)
+            .padding(1.15.cssRem)
+            .borderRadius(24.px)
+            .backgroundColor(Color.rgba(255, 255, 255, 0.07f))
+            .border(1.px, LineStyle.Solid, Color.rgba(255, 255, 255, 0.13f))
+            .gap(1.cssRem)
+    ) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .gap(0.8.cssRem)
+                .flexWrap(FlexWrap.Wrap),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(
+                Modifier
+                    .gap(0.25.cssRem)
+                    .styleModifier { property("flex", "1 1 280px") }
+            ) {
+                H2(
+                    attrs = Modifier
+                        .margin(0.px)
+                        .fontSize(1.35.cssRem)
+                        .fontWeight(FontWeight.Bold)
+                        .color(Colors.White)
+                        .toAttrs()
+                ) {
+                    Text("Player Ratings")
+                }
+                Span(
+                    attrs = Modifier
+                        .fontSize(0.9.cssRem)
+                        .color(Color.rgba(245, 248, 244, 0.64f))
+                        .toAttrs()
+                ) {
+                    Text("${players.size} of $totalPlayers players")
+                }
+            }
+            Row(
+                Modifier
+                    .gap(0.5.cssRem)
+                    .flexWrap(FlexWrap.Wrap),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                SortButton("Fargo", sortMode == FargoSortMode.Fargo) { onSortMode(FargoSortMode.Fargo) }
+                SortButton("Simple OBK", sortMode == FargoSortMode.Obk) { onSortMode(FargoSortMode.Obk) }
+                Div(attrs = Modifier.width(230.px).toAttrs()) {
+                    FargoInput(filter, "Filter player", onFilter)
+                }
+            }
+        }
+
+        Column(Modifier.fillMaxWidth().gap(0.45.cssRem)) {
+            Div(
+                attrs = Modifier
+                    .fillMaxWidth()
+                    .styleModifier {
+                        property("overflow-x", "auto")
+                        property("padding-bottom", "0.2rem")
+                    }
+                    .toAttrs()
+            ) {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .gap(0.45.cssRem)
+                        .styleModifier { property("min-width", "680px") }
+                ) {
+                    PlayerListHeader()
+                    players.take(120).forEachIndexed { index, player ->
+                        PlayerRow(index + 1, player)
+                    }
+                }
+            }
+            if (players.size > 120) {
+                FargoMessage("Showing first 120 matching players. Use the filter to narrow the list.")
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlayerListHeader() {
+    Div(
+        attrs = Modifier
+            .fillMaxWidth()
+            .padding(leftRight = 0.8.cssRem, topBottom = 0.35.cssRem)
+            .color(Color.rgba(245, 248, 244, 0.58f))
+            .fontSize(0.78.cssRem)
+            .fontWeight(FontWeight.Bold)
+            .styleModifier {
+                property("display", "grid")
+                property("grid-template-columns", "56px minmax(220px, 1fr) 110px 130px 100px")
+                property("column-gap", "1rem")
+                property("align-items", "center")
+            }
+            .toAttrs()
+    ) {
+        PlayerTableHeaderCell("#")
+        PlayerTableHeaderCell("Player")
+        PlayerTableHeaderCell("Fargo")
+        PlayerTableHeaderCell("Simple OBK")
+        PlayerTableHeaderCell("Record")
+    }
+}
+
+@Composable
+private fun PlayerRow(index: Int, player: FargoPlayer) {
+    Div(
+        attrs = Modifier
+            .fillMaxWidth()
+            .padding(leftRight = 0.8.cssRem, topBottom = 0.62.cssRem)
+            .borderRadius(14.px)
+            .backgroundColor(Color.rgba(255, 255, 255, 0.055f))
+            .border(1.px, LineStyle.Solid, Color.rgba(255, 255, 255, 0.08f))
+            .color(Colors.White)
+            .fontSize(0.92.cssRem)
+            .styleModifier {
+                property("display", "grid")
+                property("grid-template-columns", "56px minmax(220px, 1fr) 110px 130px 100px")
+                property("column-gap", "1rem")
+                property("align-items", "center")
+                property("min-height", "54px")
+            }
+            .toAttrs()
+    ) {
+        PlayerTableCell(index.toString(), muted = true)
+        PlayerTableCell(player.name, strong = true)
+        PlayerTableCell(formatRating(player.fargoRating))
+        PlayerTableCell(formatOptionalRating(player.latestHandicap))
+        PlayerTableCell("${player.wins}-${player.losses}")
+    }
+}
+
+@Composable
+private fun PlayerTableHeaderCell(text: String) {
+    Span(
+        attrs = Modifier
+            .lineHeight(1.25)
+            .styleModifier {
+                property("white-space", "nowrap")
+                property("overflow", "hidden")
+                property("text-overflow", "ellipsis")
+            }
+            .toAttrs()
+    ) {
+        Text(text)
+    }
+}
+
+@Composable
+private fun PlayerTableCell(text: String, strong: Boolean = false, muted: Boolean = false) {
+    Span(
+        attrs = Modifier
+            .lineHeight(1.25)
+            .fontWeight(if (strong) FontWeight.SemiBold else FontWeight.Normal)
+            .color(if (muted) Color.rgba(245, 248, 244, 0.56f) else Color.rgba(245, 248, 244, 0.9f))
+            .styleModifier {
+                property("white-space", "nowrap")
+                property("overflow", "hidden")
+                property("text-overflow", "ellipsis")
+                property("min-width", "0")
+            }
+            .toAttrs {
+                attr("title", text)
+            }
+    ) {
+        Text(text)
+    }
+}
+
+@Composable
+private fun SortButton(label: String, active: Boolean, onClick: () -> Unit) {
+    Button(
+        attrs = Modifier
+            .padding(leftRight = 0.85.cssRem, topBottom = 0.56.cssRem)
+            .borderRadius(999.px)
+            .backgroundColor(if (active) Color.rgba(239, 190, 83, 0.18f) else Color.rgba(255, 255, 255, 0.08f))
+            .border(1.px, LineStyle.Solid, if (active) Color.rgba(239, 190, 83, 0.48f) else Color.rgba(255, 255, 255, 0.13f))
+            .color(if (active) Color.rgb(247, 219, 143) else Color.rgba(245, 248, 244, 0.78f))
+            .fontWeight(FontWeight.Bold)
+            .styleModifier { property("cursor", "pointer") }
+            .toAttrs { onClick { onClick() } }
+    ) {
+        Text(label)
+    }
+}
+
+@Composable
+private fun FargoInput(value: String, placeholder: String, onValue: (String) -> Unit) {
+    Input(
+        type = InputType.Text,
+        attrs = Modifier
+            .fillMaxWidth()
+            .padding(leftRight = 0.8.cssRem, topBottom = 0.65.cssRem)
+            .borderRadius(14.px)
+            .backgroundColor(Color.rgba(0, 0, 0, 0.18f))
+            .border(1.px, LineStyle.Solid, Color.rgba(255, 255, 255, 0.14f))
+            .color(Colors.White)
+            .fontSize(0.95.cssRem)
+            .styleModifier {
+                property("box-sizing", "border-box")
+                property("outline", "none")
+            }
+            .toAttrs {
+                attr("value", value)
+                attr("placeholder", placeholder)
+                onInput { onValue(it.value) }
+            }
+    )
+}
+
+@Composable
+private fun FargoChip(text: String) {
+    Span(
+        attrs = Modifier
+            .padding(leftRight = 0.72.cssRem, topBottom = 0.4.cssRem)
+            .borderRadius(999.px)
+            .backgroundColor(Color.rgba(76, 211, 140, 0.13f))
+            .border(1.px, LineStyle.Solid, Color.rgba(76, 211, 140, 0.38f))
+            .color(Color.rgb(147, 235, 183))
+            .fontSize(0.86.cssRem)
+            .fontWeight(FontWeight.SemiBold)
+            .toAttrs()
+    ) {
+        Text(text)
+    }
+}
+
+@Composable
+private fun FargoStatLine(label: String, value: String) {
+    Row(
+        Modifier.fillMaxWidth().gap(0.65.cssRem),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Span(
+            attrs = Modifier
+                .fontSize(0.86.cssRem)
+                .color(Color.rgba(245, 248, 244, 0.58f))
+                .styleModifier { property("flex", "0 0 118px") }
+                .toAttrs()
+        ) {
+            Text(label)
+        }
+        Span(
+            attrs = Modifier
+                .fontSize(0.92.cssRem)
+                .fontWeight(FontWeight.SemiBold)
+                .color(Color.rgba(245, 248, 244, 0.9f))
+                .toAttrs()
+        ) {
+            Text(value)
+        }
+    }
+}
+
+private fun parseFargoPlayers(csv: String): List<FargoPlayer> {
+    return csv.lineSequence()
+        .drop(1)
+        .mapNotNull { line ->
+            if (line.isBlank()) return@mapNotNull null
+            val columns = parseCsvLine(line)
+            if (columns.size < 10) return@mapNotNull null
+            FargoPlayer(
+                id = columns[0],
+                name = columns[1],
+                fargoRating = columns[2].toDoubleOrNull() ?: return@mapNotNull null,
+                latestHandicap = columns[3].toDoubleOrNull(),
+                games = columns[6].toIntOrNull() ?: 0,
+                wins = columns[7].toIntOrNull() ?: 0,
+                losses = columns[8].toIntOrNull() ?: 0,
+            )
+        }
+        .toList()
+}
+
+private fun parseCsvLine(line: String): List<String> {
+    val values = mutableListOf<String>()
+    val current = StringBuilder()
+    var quoted = false
+    var index = 0
+    while (index < line.length) {
+        val char = line[index]
+        when {
+            char == '"' && quoted && index + 1 < line.length && line[index + 1] == '"' -> {
+                current.append('"')
+                index += 1
+            }
+            char == '"' -> quoted = !quoted
+            char == ',' && !quoted -> {
+                values += current.toString()
+                current.clear()
+            }
+            else -> current.append(char)
+        }
+        index += 1
+    }
+    values += current.toString()
+    return values
+}
+
+private fun parseFargoHistoryYears(json: String): String {
+    val item = js("JSON.parse(json)")
+    return (item.history_years as? String).orEmpty().ifBlank { "?" }
+}
+
+private fun fargoGameProbability(rating: Double, opponentRating: Double): Double {
+    return 1.0 / (1.0 + 2.0.pow((opponentRating - rating) / 100.0))
+}
+
+private fun raceSpotSuggestion(raceTo: Int, firstPlayer: FargoPlayer, secondPlayer: FargoPlayer, firstProbability: Double): String {
+    val favorite = if (firstProbability >= 0.5) firstPlayer else secondPlayer
+    val underdog = if (favorite == firstPlayer) secondPlayer else firstPlayer
+    val favoriteRackProbability = if (favorite == firstPlayer) firstProbability else 1.0 - firstProbability
+    val bestSpot = (0 until raceTo).minByOrNull { spot ->
+        abs(matchWinProbability(favoriteRackProbability, raceTo, raceTo - spot) - 0.5)
+    } ?: 0
+
+    val favoriteMatchProbability = matchWinProbability(favoriteRackProbability, raceTo, raceTo - bestSpot)
+    return if (bestSpot == 0) {
+        "Even race. ${favorite.name} is about ${formatPercent(favoriteMatchProbability)} to win."
+    } else {
+        "${underdog.name} starts ahead $bestSpot-0. ${favorite.name} is about ${formatPercent(favoriteMatchProbability)} to win."
+    }
+}
+
+private fun matchWinProbability(rackProbability: Double, favoriteTarget: Int, underdogTarget: Int): Double {
+    var probability = 0.0
+    for (underdogWins in 0 until underdogTarget) {
+        probability += combinations(favoriteTarget - 1 + underdogWins, underdogWins) *
+            rackProbability.pow(favoriteTarget) *
+            (1.0 - rackProbability).pow(underdogWins)
+    }
+    return probability.coerceIn(0.0, 1.0)
+}
+
+private fun combinations(n: Int, k: Int): Double {
+    if (k < 0 || k > n) return 0.0
+    val effectiveK = minOf(k, n - k)
+    var result = 1.0
+    for (i in 1..effectiveK) {
+        result = result * (n - effectiveK + i) / i
+    }
+    return result
+}
+
+private fun formatRating(value: Double): String = value.toInt().toString()
+
+private fun formatOptionalRating(value: Double?): String = value?.toInt()?.toString() ?: "-"
+
+private fun formatPercent(value: Double): String = "${(value * 1000.0).toInt() / 10.0}%"
+
+private fun fetchFargoText(url: String, onSuccess: (String) -> Unit, onError: (String) -> Unit) {
+    js("fetch(url).then(function(response) { if (!response.ok) { throw new Error(response.status + ' ' + response.statusText); } return response.text(); }).then(function(text) { onSuccess(text); }).catch(function(error) { onError(String(error)); });")
+}
