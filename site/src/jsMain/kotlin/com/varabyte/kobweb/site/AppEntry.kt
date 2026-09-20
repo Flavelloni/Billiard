@@ -1,7 +1,12 @@
 package com.varabyte.kobweb.site
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import com.varabyte.kobweb.browser.storage.createStorageKey
 import com.varabyte.kobweb.browser.storage.getItem
 import com.varabyte.kobweb.browser.storage.setItem
@@ -27,12 +32,16 @@ import com.varabyte.kobweb.navigation.BasePath
 import com.varabyte.kobweb.site.components.sections.NavHeaderHeight
 import com.varabyte.kobweb.site.components.sections.listing.MobileNavHeight
 import com.varabyte.kobweb.site.components.style.DividerColor
+import com.varabyte.kobweb.site.model.LocalSiteLanguage
+import com.varabyte.kobweb.site.model.LocalSiteLanguageSetter
+import com.varabyte.kobweb.site.model.SiteLanguage
 import kotlinx.browser.document
 import kotlinx.browser.localStorage
 import org.jetbrains.compose.web.css.*
 import org.w3c.dom.HTMLLinkElement
 
 private val COLOR_MODE_KEY = ColorMode.entries.createStorageKey("app:colorMode")
+private const val LANGUAGE_KEY = "app:language"
 
 @InitSilk
 fun initSilk(ctx: InitSilkContext) {
@@ -138,6 +147,14 @@ fun initSilk(ctx: InitSilkContext) {
 fun AppEntry(content: @Composable () -> Unit) {
     SilkApp {
         val colorMode = ColorMode.current
+        var language by remember {
+            mutableStateOf(
+                when (localStorage.getItem(LANGUAGE_KEY)) {
+                    SiteLanguage.Norwegian.name -> SiteLanguage.Norwegian
+                    else -> SiteLanguage.English
+                }
+            )
+        }
         LaunchedEffect(Unit) {
             val faviconHref = BasePath.prependTo("/images/pool-ball-icon.svg?v=2")
             val iconLinks = document.head?.querySelectorAll("link[rel~='icon']")
@@ -161,17 +178,25 @@ fun AppEntry(content: @Composable () -> Unit) {
         LaunchedEffect(colorMode) {
             localStorage.setItem(COLOR_MODE_KEY, colorMode)
         }
+        LaunchedEffect(language) {
+            localStorage.setItem(LANGUAGE_KEY, language.name)
+        }
 
-        Surface(
-            SmoothColorStyle.toModifier()
-                .fillMaxWidth()
-                .minHeight(100.vh)
-                .setVariable(
-                    DividerColor,
-                    if (colorMode.isDark) Color.rgba(238, 238, 238, 0.2f) else Color.rgba(17, 17, 17, 0.2f)
-                )
+        CompositionLocalProvider(
+            LocalSiteLanguage provides language,
+            LocalSiteLanguageSetter provides { nextLanguage -> language = nextLanguage },
         ) {
-            content()
+            Surface(
+                SmoothColorStyle.toModifier()
+                    .fillMaxWidth()
+                    .minHeight(100.vh)
+                    .setVariable(
+                        DividerColor,
+                        if (colorMode.isDark) Color.rgba(238, 238, 238, 0.2f) else Color.rgba(17, 17, 17, 0.2f)
+                    )
+            ) {
+                content()
+            }
         }
     }
 }

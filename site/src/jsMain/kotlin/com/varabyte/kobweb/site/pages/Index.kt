@@ -31,6 +31,12 @@ import com.varabyte.kobweb.core.init.InitRouteContext
 import com.varabyte.kobweb.core.layout.Layout
 import com.varabyte.kobweb.navigation.Anchor
 import com.varabyte.kobweb.site.components.layouts.PageLayoutData
+import com.varabyte.kobweb.site.components.widgets.EightBallToolIcon
+import com.varabyte.kobweb.site.components.widgets.OverlapToolIcon
+import com.varabyte.kobweb.site.components.widgets.RatingToolIcon
+import com.varabyte.kobweb.site.model.LocalSiteLanguage
+import com.varabyte.kobweb.site.model.SiteLanguage
+import com.varabyte.kobweb.site.model.text
 import org.jetbrains.compose.web.css.FlexWrap
 import org.jetbrains.compose.web.css.LineStyle
 import org.jetbrains.compose.web.css.cssRem
@@ -43,34 +49,42 @@ import org.jetbrains.compose.web.dom.Span
 import org.jetbrains.compose.web.dom.Text
 
 private data class HomeTool(
-    val title: String,
-    val subtitle: String,
+    val titleEnglish: String,
+    val titleNorwegian: String,
+    val subtitleEnglish: String,
+    val subtitleNorwegian: String,
     val href: String,
-    val icon: String,
     val accent: Color.Rgb,
+    val icon: @Composable (Int) -> Unit,
 )
 
 private val homeTools = listOf(
     HomeTool(
-        title = "Fractional Aiming",
-        subtitle = "Practice cue-ball overlap and cut-angle reads.",
-        href = "/pool-trainer",
-        icon = "AIM",
-        accent = Color.rgb(76, 211, 140),
-    ),
-    HomeTool(
-        title = "OBK Fargo",
-        subtitle = "Ratings, player search, and race handicap suggestions.",
+        titleEnglish = "OBK Fargo",
+        titleNorwegian = "OBK Fargo",
+        subtitleEnglish = "Ratings, player search, matchup odds, and race handicap suggestions.",
+        subtitleNorwegian = "Ratinger, spillersøk, matchup-sjanser og forslag til handicap i race.",
         href = "/obk-fargo",
-        icon = "OBK",
         accent = Color.rgb(239, 190, 83),
+        icon = { size -> RatingToolIcon(size) },
     ),
     HomeTool(
-        title = "8 Ball Prediction",
-        subtitle = "Pick the next ball from real match layouts.",
+        titleEnglish = "8 Ball Prediction",
+        titleNorwegian = "8-ball prediksjon",
+        subtitleEnglish = "Pick the next ball from real match layouts.",
+        subtitleNorwegian = "Velg neste ball fra ekte kampoppsett.",
         href = "/8-ball-prediction",
-        icon = "8",
         accent = Color.rgb(99, 164, 255),
+        icon = { size -> EightBallToolIcon(size) },
+    ),
+    HomeTool(
+        titleEnglish = "Fractional Aiming",
+        titleNorwegian = "Fraksjonssikting",
+        subtitleEnglish = "Practice cue-ball overlap and cut-angle reads.",
+        subtitleNorwegian = "Tren på overlapp, treffbilde og lesing av kuttvinkler.",
+        href = "/pool-trainer",
+        accent = Color.rgb(76, 211, 140),
+        icon = { size -> OverlapToolIcon(size) },
     ),
 )
 
@@ -83,6 +97,7 @@ fun initHomePage(ctx: InitRouteContext) {
 @Composable
 @Layout(".components.layouts.PageLayout")
 fun HomePage() {
+    val language = LocalSiteLanguage.current
     Column(
         Modifier
             .fillMaxWidth()
@@ -123,7 +138,7 @@ fun HomePage() {
                     .styleModifier { property("text-align", "center") }
                     .toAttrs()
             ) {
-                Text("Choose a tool for aiming practice, OBK Fargo ratings, or 8-ball shot prediction.")
+                Text(language.text("Choose a tool for aiming practice, OBK Fargo ratings, or 8-ball shot prediction.", "Velg et verktøy for siktetrening, OBK Fargo-rating eller 8-ball prediksjon."))
             }
         }
 
@@ -137,14 +152,14 @@ fun HomePage() {
             verticalAlignment = Alignment.Top,
         ) {
             homeTools.forEach { tool ->
-                HomeToolTile(tool)
+                HomeToolTile(tool, language)
             }
         }
     }
 }
 
 @Composable
-private fun HomeToolTile(tool: HomeTool) {
+private fun HomeToolTile(tool: HomeTool, language: SiteLanguage) {
     Anchor(
         href = tool.href,
         attrs = Modifier
@@ -155,10 +170,11 @@ private fun HomeToolTile(tool: HomeTool) {
             .color(Colors.White)
             .styleModifier {
                 property("width", "min(100%, 340px)")
-                property("min-height", "230px")
+                property("height", "260px")
                 property("box-sizing", "border-box")
                 property("text-decoration", "none")
                 property("display", "flex")
+                property("align-items", "stretch")
                 property("box-shadow", "0 26px 70px rgba(0, 0, 0, 0.28)")
                 property("transition", "transform 160ms ease, border-color 160ms ease, background 160ms ease")
             }
@@ -173,26 +189,14 @@ private fun HomeToolTile(tool: HomeTool) {
             Div(
                 attrs = Modifier
                     .size(76.px)
-                    .borderRadius(22.px)
-                    .backgroundColor(tool.accent.copyf(alpha = 0.18f))
-                    .border(1.px, LineStyle.Solid, tool.accent.copyf(alpha = 0.48f))
                     .styleModifier {
                         property("display", "flex")
                         property("align-items", "center")
                         property("justify-content", "center")
-                        property("box-shadow", "inset 0 1px 0 rgba(255,255,255,0.12)")
                     }
                     .toAttrs()
             ) {
-                Span(
-                    attrs = Modifier
-                        .fontSize(if (tool.icon == "8") 2.4.cssRem else 1.05.cssRem)
-                        .fontWeight(FontWeight.Bold)
-                        .color(tool.accent)
-                        .toAttrs()
-                ) {
-                    Text(tool.icon)
-                }
+                tool.icon(76)
             }
             Column(Modifier.gap(0.45.cssRem)) {
                 Span(
@@ -202,7 +206,7 @@ private fun HomeToolTile(tool: HomeTool) {
                         .lineHeight(1.1)
                         .toAttrs()
                 ) {
-                    Text(tool.title)
+                    Text(language.text(tool.titleEnglish, tool.titleNorwegian))
                 }
                 P(
                     attrs = Modifier
@@ -212,7 +216,7 @@ private fun HomeToolTile(tool: HomeTool) {
                         .color(Color.rgba(245, 248, 244, 0.74f))
                         .toAttrs()
                 ) {
-                    Text(tool.subtitle)
+                    Text(language.text(tool.subtitleEnglish, tool.subtitleNorwegian))
                 }
             }
             Span(
@@ -221,9 +225,10 @@ private fun HomeToolTile(tool: HomeTool) {
                     .fontSize(0.9.cssRem)
                     .fontWeight(FontWeight.SemiBold)
                     .color(tool.accent)
+                    .styleModifier { property("margin-top", "auto") }
                     .toAttrs()
             ) {
-                Text("Open")
+                Text(language.text("Open", "Åpne"))
             }
         }
     }

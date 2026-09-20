@@ -36,6 +36,9 @@ import com.varabyte.kobweb.core.init.InitRouteContext
 import com.varabyte.kobweb.core.layout.Layout
 import com.varabyte.kobweb.navigation.BasePath
 import com.varabyte.kobweb.site.components.layouts.PageLayoutData
+import com.varabyte.kobweb.site.model.LocalSiteLanguage
+import com.varabyte.kobweb.site.model.SiteLanguage
+import com.varabyte.kobweb.site.model.text
 import org.jetbrains.compose.web.attributes.InputType
 import org.jetbrains.compose.web.css.FlexWrap
 import org.jetbrains.compose.web.css.LineStyle
@@ -78,6 +81,7 @@ fun initObkFargoPage(ctx: InitRouteContext) {
 @Composable
 @Layout(".components.layouts.PageLayout")
 fun ObkFargoPage() {
+    val language = LocalSiteLanguage.current
     var players by remember { mutableStateOf<List<FargoPlayer>?>(null) }
     var historyYears by remember { mutableStateOf<String?>(null) }
     var loadError by remember { mutableStateOf<String?>(null) }
@@ -95,7 +99,7 @@ fun ObkFargoPage() {
                 players = parseFargoPlayers(it)
                 loadError = null
             },
-            onError = { loadError = "Could not load Fargo ratings: $it" },
+            onError = { loadError = language.text("Could not load Fargo ratings: $it", "Kunne ikke laste Fargo-ratinger: $it") },
         )
         fetchFargoText(
             BasePath.prependTo("/fargo/meta.json"),
@@ -151,15 +155,16 @@ fun ObkFargoPage() {
                     .color(Color.rgba(245, 248, 244, 0.76f))
                     .toAttrs()
             ) {
-                Text("Ratings are calculated solely from Oslo Biljardklubb tournaments from the last ${historyYears ?: "?"} years.")
+                Text(language.text("Ratings are calculated solely from Oslo Biljardklubb tournaments from the last ${historyYears ?: "?"} years.", "Ratingene er beregnet kun fra Oslo Biljardklubb-turneringer fra de siste ${historyYears ?: "?"} årene."))
             }
         }
 
         when {
-            loadError != null -> FargoMessage(loadError ?: "Could not load Fargo ratings.")
-            players == null -> FargoMessage("Loading ratings...")
+            loadError != null -> FargoMessage(loadError ?: language.text("Could not load Fargo ratings.", "Kunne ikke laste Fargo-ratinger."))
+            players == null -> FargoMessage(language.text("Loading ratings...", "Laster ratinger..."))
             else -> {
                 MatchupPanel(
+                    language = language,
                     players = loadedPlayers,
                     firstQuery = firstQuery,
                     secondQuery = secondQuery,
@@ -184,6 +189,7 @@ fun ObkFargoPage() {
                 )
 
                 PlayerListPanel(
+                    language = language,
                     players = filteredPlayers,
                     totalPlayers = loadedPlayers.size,
                     sortMode = sortMode,
@@ -213,6 +219,7 @@ private fun FargoMessage(message: String) {
 
 @Composable
 private fun MatchupPanel(
+    language: SiteLanguage,
     players: List<FargoPlayer>,
     firstQuery: String,
     secondQuery: String,
@@ -255,7 +262,7 @@ private fun MatchupPanel(
                         .color(Colors.White)
                         .toAttrs()
                 ) {
-                    Text("Matchup Helper")
+                    Text(language.text("Matchup Helper", "Matchup-hjelper"))
                 }
                 P(
                     attrs = Modifier
@@ -265,7 +272,7 @@ private fun MatchupPanel(
                         .color(Color.rgba(245, 248, 244, 0.72f))
                         .toAttrs()
                 ) {
-                    Text("Search two players, confirm the names, then compare ratings, OBK records, expected win chances, and fair race spots.")
+                    Text(language.text("Search two players, confirm the names, then compare ratings, OBK records, expected win chances, and fair race spots.", "Søk opp to spillere, bekreft navnene, og sammenlign ratinger, OBK-statistikk, forventede vinnersjanser og rettferdige race-handicap."))
                 }
             }
             Row(
@@ -275,12 +282,12 @@ private fun MatchupPanel(
                     .styleModifier { property("flex", "2 1 560px") },
                 verticalAlignment = Alignment.Top,
             ) {
-                PlayerPicker("Player A", firstQuery, firstPlayer, players, onFirstQuery, onFirstPlayer)
-                PlayerPicker("Player B", secondQuery, secondPlayer, players, onSecondQuery, onSecondPlayer)
+                PlayerPicker(language.text("Player A", "Spiller A"), firstQuery, firstPlayer, players, onFirstQuery, onFirstPlayer, language)
+                PlayerPicker(language.text("Player B", "Spiller B"), secondQuery, secondPlayer, players, onSecondQuery, onSecondPlayer, language)
             }
         }
 
-        MatchupResult(firstPlayer, secondPlayer)
+        MatchupResult(firstPlayer, secondPlayer, language)
     }
 }
 
@@ -292,6 +299,7 @@ private fun PlayerPicker(
     players: List<FargoPlayer>,
     onQuery: (String) -> Unit,
     onSelect: (FargoPlayer) -> Unit,
+    language: SiteLanguage,
 ) {
     val suggestions = players
         .filter { query.isNotBlank() && it.name.contains(query, ignoreCase = true) }
@@ -314,11 +322,11 @@ private fun PlayerPicker(
         }
         FargoInput(
             value = query,
-            placeholder = "Search player",
+            placeholder = language.text("Search player", "Søk spiller"),
             onValue = onQuery,
         )
         if (selectedPlayer != null) {
-            FargoChip("Confirmed: ${selectedPlayer.name}")
+            FargoChip(language.text("Confirmed: ${selectedPlayer.name}", "Bekreftet: ${selectedPlayer.name}"))
         } else if (suggestions.isNotEmpty()) {
             Column(Modifier.gap(0.35.cssRem)) {
                 suggestions.forEach { player ->
@@ -345,7 +353,7 @@ private fun PlayerPicker(
 }
 
 @Composable
-private fun MatchupResult(firstPlayer: FargoPlayer?, secondPlayer: FargoPlayer?) {
+private fun MatchupResult(firstPlayer: FargoPlayer?, secondPlayer: FargoPlayer?, language: SiteLanguage) {
     when {
         firstPlayer == null || secondPlayer == null -> {
             P(
@@ -357,10 +365,10 @@ private fun MatchupResult(firstPlayer: FargoPlayer?, secondPlayer: FargoPlayer?)
                     .color(Color.rgba(245, 248, 244, 0.66f))
                     .toAttrs()
             ) {
-                Text("Confirm both player names to show the matchup.")
+                Text(language.text("Confirm both player names to show the matchup.", "Bekreft begge spillernavnene for å vise matchupen."))
             }
         }
-        firstPlayer.id == secondPlayer.id -> FargoMessage("Pick two different players.")
+        firstPlayer.id == secondPlayer.id -> FargoMessage(language.text("Pick two different players.", "Velg to forskjellige spillere."))
         else -> {
             val firstProbability = fargoGameProbability(firstPlayer.fargoRating, secondPlayer.fargoRating)
             val secondProbability = 1.0 - firstProbability
@@ -391,8 +399,8 @@ private fun MatchupResult(firstPlayer: FargoPlayer?, secondPlayer: FargoPlayer?)
                         .flexWrap(FlexWrap.Wrap),
                     verticalAlignment = Alignment.Top,
                 ) {
-                    RaceSuggestionCard(4, firstPlayer, secondPlayer, firstProbability)
-                    RaceSuggestionCard(5, firstPlayer, secondPlayer, firstProbability)
+                    RaceSuggestionCard(4, firstPlayer, secondPlayer, firstProbability, language)
+                    RaceSuggestionCard(5, firstPlayer, secondPlayer, firstProbability, language)
                 }
                 P(
                     attrs = Modifier
@@ -402,7 +410,7 @@ private fun MatchupResult(firstPlayer: FargoPlayer?, secondPlayer: FargoPlayer?)
                         .color(Color.rgba(245, 248, 244, 0.6f))
                         .toAttrs()
                 ) {
-                    Text("The CSV contains aggregate OBK records, not direct opponent-by-opponent match history. The head-to-head figures here are calculated from Fargo rating difference.")
+                    Text(language.text("The CSV contains aggregate OBK records, not direct opponent-by-opponent match history. The head-to-head figures here are calculated from Fargo rating difference.", "CSV-filen inneholder samlet OBK-statistikk, ikke direkte kampstatistikk spiller mot spiller. Head-to-head-tallene her beregnes fra Fargo-ratingforskjellen."))
                 }
             }
         }
@@ -430,15 +438,15 @@ private fun PlayerComparisonCard(player: FargoPlayer, probability: Double) {
             Text(player.name)
         }
         FargoStatLine("Fargo", formatRating(player.fargoRating))
-        FargoStatLine("Simple OBK", formatOptionalRating(player.latestHandicap))
-        FargoStatLine("OBK record", "${player.wins}-${player.losses} (${player.games} games)")
-        FargoStatLine("Expected rack win", formatPercent(probability))
+        FargoStatLine(LocalSiteLanguage.current.text("Simple OBK", "Enkel OBK"), formatOptionalRating(player.latestHandicap))
+        FargoStatLine(LocalSiteLanguage.current.text("OBK record", "OBK-statistikk"), "${player.wins}-${player.losses} (${player.games} ${LocalSiteLanguage.current.text("games", "partier")})")
+        FargoStatLine(LocalSiteLanguage.current.text("Expected rack win", "Forventet partisjanse"), formatPercent(probability))
     }
 }
 
 @Composable
-private fun RaceSuggestionCard(raceTo: Int, firstPlayer: FargoPlayer, secondPlayer: FargoPlayer, firstProbability: Double) {
-    val suggestion = raceSpotSuggestion(raceTo, firstPlayer, secondPlayer, firstProbability)
+private fun RaceSuggestionCard(raceTo: Int, firstPlayer: FargoPlayer, secondPlayer: FargoPlayer, firstProbability: Double, language: SiteLanguage) {
+    val suggestion = raceSpotSuggestion(raceTo, firstPlayer, secondPlayer, firstProbability, language)
     Column(
         Modifier
             .padding(0.85.cssRem)
@@ -455,7 +463,7 @@ private fun RaceSuggestionCard(raceTo: Int, firstPlayer: FargoPlayer, secondPlay
                 .color(Color.rgb(239, 210, 133))
                 .toAttrs()
         ) {
-            Text("Race to $raceTo")
+            Text(language.text("Race to $raceTo", "Race til $raceTo"))
         }
         Span(
             attrs = Modifier
@@ -472,6 +480,7 @@ private fun RaceSuggestionCard(raceTo: Int, firstPlayer: FargoPlayer, secondPlay
 
 @Composable
 private fun PlayerListPanel(
+    language: SiteLanguage,
     players: List<FargoPlayer>,
     totalPlayers: Int,
     sortMode: FargoSortMode,
@@ -509,7 +518,7 @@ private fun PlayerListPanel(
                         .color(Colors.White)
                         .toAttrs()
                 ) {
-                    Text("Player Ratings")
+                    Text(language.text("Player Ratings", "Spillerratinger"))
                 }
                 Span(
                     attrs = Modifier
@@ -517,7 +526,7 @@ private fun PlayerListPanel(
                         .color(Color.rgba(245, 248, 244, 0.64f))
                         .toAttrs()
                 ) {
-                    Text("${players.size} of $totalPlayers players")
+                    Text(language.text("${players.size} of $totalPlayers players", "${players.size} av $totalPlayers spillere"))
                 }
             }
             Row(
@@ -527,9 +536,9 @@ private fun PlayerListPanel(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 SortButton("Fargo", sortMode == FargoSortMode.Fargo) { onSortMode(FargoSortMode.Fargo) }
-                SortButton("Simple OBK", sortMode == FargoSortMode.Obk) { onSortMode(FargoSortMode.Obk) }
+                SortButton(language.text("Simple OBK", "Enkel OBK"), sortMode == FargoSortMode.Obk) { onSortMode(FargoSortMode.Obk) }
                 Div(attrs = Modifier.width(230.px).toAttrs()) {
-                    FargoInput(filter, "Filter player", onFilter)
+                    FargoInput(filter, language.text("Filter player", "Filtrer spiller"), onFilter)
                 }
             }
         }
@@ -557,7 +566,7 @@ private fun PlayerListPanel(
                 }
             }
             if (players.size > 120) {
-                FargoMessage("Showing first 120 matching players. Use the filter to narrow the list.")
+                FargoMessage(language.text("Showing first 120 matching players. Use the filter to narrow the list.", "Viser de første 120 treffene. Bruk filteret for å snevre inn listen."))
             }
         }
     }
@@ -581,10 +590,10 @@ private fun PlayerListHeader() {
             .toAttrs()
     ) {
         PlayerTableHeaderCell("#")
-        PlayerTableHeaderCell("Player")
+        PlayerTableHeaderCell(LocalSiteLanguage.current.text("Player", "Spiller"))
         PlayerTableHeaderCell("Fargo")
-        PlayerTableHeaderCell("Simple OBK")
-        PlayerTableHeaderCell("Record")
+        PlayerTableHeaderCell(LocalSiteLanguage.current.text("Simple OBK", "Enkel OBK"))
+        PlayerTableHeaderCell(LocalSiteLanguage.current.text("Record", "Statistikk"))
     }
 }
 
@@ -792,7 +801,7 @@ private fun fargoGameProbability(rating: Double, opponentRating: Double): Double
     return 1.0 / (1.0 + 2.0.pow((opponentRating - rating) / 100.0))
 }
 
-private fun raceSpotSuggestion(raceTo: Int, firstPlayer: FargoPlayer, secondPlayer: FargoPlayer, firstProbability: Double): String {
+private fun raceSpotSuggestion(raceTo: Int, firstPlayer: FargoPlayer, secondPlayer: FargoPlayer, firstProbability: Double, language: SiteLanguage): String {
     val favorite = if (firstProbability >= 0.5) firstPlayer else secondPlayer
     val underdog = if (favorite == firstPlayer) secondPlayer else firstPlayer
     val favoriteRackProbability = if (favorite == firstPlayer) firstProbability else 1.0 - firstProbability
@@ -802,9 +811,15 @@ private fun raceSpotSuggestion(raceTo: Int, firstPlayer: FargoPlayer, secondPlay
 
     val favoriteMatchProbability = matchWinProbability(favoriteRackProbability, raceTo, raceTo - bestSpot)
     return if (bestSpot == 0) {
-        "Even race. ${favorite.name} is about ${formatPercent(favoriteMatchProbability)} to win."
+        language.text(
+            "Even race. ${favorite.name} is about ${formatPercent(favoriteMatchProbability)} to win.",
+            "Jevnt race. ${favorite.name} har omtrent ${formatPercent(favoriteMatchProbability)} sjanse til å vinne.",
+        )
     } else {
-        "${underdog.name} starts ahead $bestSpot-0. ${favorite.name} is about ${formatPercent(favoriteMatchProbability)} to win."
+        language.text(
+            "${underdog.name} starts ahead $bestSpot-0. ${favorite.name} is about ${formatPercent(favoriteMatchProbability)} to win.",
+            "${underdog.name} starter foran $bestSpot-0. ${favorite.name} har omtrent ${formatPercent(favoriteMatchProbability)} sjanse til å vinne.",
+        )
     }
 }
 

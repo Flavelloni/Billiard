@@ -30,11 +30,20 @@ import com.varabyte.kobweb.silk.theme.colors.palette.color
 import com.varabyte.kobweb.silk.theme.colors.palette.toPalette
 import com.varabyte.kobweb.silk.theme.colors.shifted
 import com.varabyte.kobweb.site.components.style.dividerBoxShadow
+import com.varabyte.kobweb.site.components.widgets.EightBallToolIcon
+import com.varabyte.kobweb.site.components.widgets.OverlapToolIcon
+import com.varabyte.kobweb.site.components.widgets.RatingToolIcon
+import com.varabyte.kobweb.site.model.LocalSiteLanguage
+import com.varabyte.kobweb.site.model.LocalSiteLanguageSetter
+import com.varabyte.kobweb.site.model.SiteLanguage
+import com.varabyte.kobweb.site.model.text
 import org.jetbrains.compose.web.css.Position
 import org.jetbrains.compose.web.css.LineStyle
 import org.jetbrains.compose.web.css.cssRem
 import org.jetbrains.compose.web.css.percent
 import org.jetbrains.compose.web.css.px
+import org.jetbrains.compose.web.dom.Button
+import org.jetbrains.compose.web.dom.Div
 import org.jetbrains.compose.web.dom.Span
 import org.jetbrains.compose.web.dom.Text
 
@@ -91,6 +100,7 @@ fun Modifier.navHeaderZIndex() = this.zIndex(10)
 @OptIn(ExperimentalJsCollectionsApi::class, ExperimentalJsExport::class)
 @Composable
 fun NavHeader() {
+    val language = LocalSiteLanguage.current
     Box(NavHeaderStyle.toModifier().navHeaderZIndex(), contentAlignment = Alignment.Center) {
         Row(
             Modifier.fillMaxWidth(90.percent),
@@ -102,24 +112,31 @@ fun NavHeader() {
             Row(
                 Modifier
                     .margin(0.px, 12.px)
-                    .gap(1.cssRem)
+                    .gap(0.55.cssRem)
                     .fontSize(1.5.cssRem),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                HeaderToolLink("AIM", "/pool-trainer", "Fractional aiming")
-                HeaderToolLink("OBK", "/obk-fargo", "OBK Fargo rating")
-                HeaderToolLink("8", "/8-ball-prediction", "8 ball prediction")
+                HeaderToolLink("/obk-fargo", language.text("OBK Fargo rating", "OBK Fargo-rating")) {
+                    RatingToolIcon(30)
+                }
+                HeaderToolLink("/8-ball-prediction", language.text("8 ball prediction", "8-ball prediksjon")) {
+                    EightBallToolIcon(30)
+                }
+                HeaderToolLink("/pool-trainer", language.text("Fractional aiming", "Fraksjonssikting")) {
+                    OverlapToolIcon(30)
+                }
+                LanguageToggle()
             }
         }
     }
 }
 
 @Composable
-private fun HeaderToolLink(label: String, href: String, title: String) {
+private fun HeaderToolLink(href: String, title: String, icon: @Composable () -> Unit) {
     Anchor(
         href = href,
         attrs = Modifier
-            .padding(leftRight = 0.72.cssRem, topBottom = 0.45.cssRem)
+            .padding(0.22.cssRem)
             .borderRadius(999.px)
             .backgroundColor(Color.rgba(255, 255, 255, 0.07f))
             .border(1.px, LineStyle.Solid, Color.rgba(255, 255, 255, 0.14f))
@@ -129,8 +146,8 @@ private fun HeaderToolLink(label: String, href: String, title: String) {
                 property("display", "inline-flex")
                 property("align-items", "center")
                 property("justify-content", "center")
-                property("min-width", "42px")
-                property("height", "34px")
+                property("width", "38px")
+                property("height", "38px")
                 property("box-sizing", "border-box")
                 property("touch-action", "manipulation")
             }
@@ -139,10 +156,47 @@ private fun HeaderToolLink(label: String, href: String, title: String) {
                 attr("title", title)
             }
     ) {
-        Span(
+        icon()
+    }
+}
+
+@Composable
+private fun LanguageToggle() {
+    val language = LocalSiteLanguage.current
+    val setLanguage = LocalSiteLanguageSetter.current
+    val nextLanguage = if (language == SiteLanguage.English) SiteLanguage.Norwegian else SiteLanguage.English
+    val label = if (language == SiteLanguage.English) "🇳🇴" else "🇬🇧"
+    val title = language.text("Switch to Norwegian", "Bytt til engelsk")
+
+    Button(
+        attrs = Modifier
+            .padding(0.px)
+            .borderRadius(999.px)
+            .backgroundColor(Color.rgba(255, 255, 255, 0.07f))
+            .border(1.px, LineStyle.Solid, Color.rgba(255, 255, 255, 0.14f))
+            .color(Color.rgba(245, 248, 244, 0.92f))
+            .styleModifier {
+                property("width", "42px")
+                property("height", "38px")
+                property("display", "inline-flex")
+                property("align-items", "center")
+                property("justify-content", "center")
+                property("cursor", "pointer")
+                property("font-size", "1.15rem")
+                property("line-height", "1")
+                property("touch-action", "manipulation")
+            }
+            .toAttrs {
+                attr("aria-label", title)
+                attr("title", title)
+                onClick { setLanguage(nextLanguage) }
+            }
+    ) {
+        Div(
             attrs = Modifier
-                .fontSize(if (label == "8") 1.1.cssRem else 0.78.cssRem)
-                .fontWeight(FontWeight.Bold)
+                .styleModifier {
+                    property("transform", "translateY(-1px)")
+                }
                 .toAttrs()
         ) {
             Text(label)

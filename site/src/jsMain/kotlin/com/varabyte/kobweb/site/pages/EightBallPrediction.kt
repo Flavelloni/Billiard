@@ -42,6 +42,9 @@ import com.varabyte.kobweb.core.layout.Layout
 import com.varabyte.kobweb.navigation.BasePath
 import com.varabyte.kobweb.site.components.layouts.PageLayoutData
 import com.varabyte.kobweb.site.components.widgets.PoolBall
+import com.varabyte.kobweb.site.model.LocalSiteLanguage
+import com.varabyte.kobweb.site.model.SiteLanguage
+import com.varabyte.kobweb.site.model.text
 import kotlinx.browser.window
 import org.jetbrains.compose.web.css.FlexWrap
 import org.jetbrains.compose.web.css.LineStyle
@@ -113,6 +116,7 @@ fun initEightBallPredictionPage(ctx: InitRouteContext) {
 @Composable
 @Layout(".components.layouts.PageLayout")
 fun EightBallPredictionPage() {
+    val language = LocalSiteLanguage.current
     var shots by remember { mutableStateOf<List<EightBallShot>?>(null) }
     var loadError by remember { mutableStateOf<String?>(null) }
     var shotIndex by remember { mutableStateOf(0) }
@@ -188,7 +192,7 @@ fun EightBallPredictionPage() {
         selectedBall = ball
         videoEnded = false
         showStartLayout = false
-        feedback = buildEightBallFeedback(ball == shot.meta.ball, shot.meta.ball)
+        feedback = buildEightBallFeedback(ball == shot.meta.ball, shot.meta.ball, language)
     }
 
     Column(
@@ -211,15 +215,15 @@ fun EightBallPredictionPage() {
                 .color(Colors.White)
                 .toAttrs()
         ) {
-            Text("8 Ball Prediction")
+            Text(language.text("8 Ball Prediction", "8-ball prediksjon"))
         }
 
         when {
-            loadError != null -> EightBallMessage(loadError ?: "Could not load 8-ball shots.")
-            loadedShots == null -> EightBallMessage("Loading shots...")
-            loadedShots.isEmpty() -> EightBallMessage("No 8-ball shots found.")
+            loadError != null -> EightBallMessage(loadError ?: language.text("Could not load 8-ball shots.", "Kunne ikke laste 8-ball-oppsett."))
+            loadedShots == null -> EightBallMessage(language.text("Loading shots...", "Laster oppsett..."))
+            loadedShots.isEmpty() -> EightBallMessage(language.text("No 8-ball shots found.", "Fant ingen 8-ball-oppsett."))
             currentShot != null -> {
-                EightBallShotHeader(currentShot, shotIndex, loadedShots.size)
+                EightBallShotHeader(currentShot, shotIndex, loadedShots.size, language)
 
                 EightBallSwipeRegion(
                     onRegionElement = { swipeRegionElement = it },
@@ -337,7 +341,7 @@ private fun EightBallMessage(message: String) {
 }
 
 @Composable
-private fun EightBallShotHeader(shot: EightBallShot, index: Int, total: Int) {
+private fun EightBallShotHeader(shot: EightBallShot, index: Int, total: Int, language: SiteLanguage) {
     Column(
         Modifier
             .fillMaxWidth()
@@ -363,7 +367,7 @@ private fun EightBallShotHeader(shot: EightBallShot, index: Int, total: Int) {
                 .styleModifier { property("justify-content", "center") },
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            EightBallInfoChip(shootingGroupLabel(shot.meta))
+            EightBallInfoChip(shootingGroupLabel(shot.meta, language))
             if (shot.meta.comments.isNotBlank()) {
                 EightBallInfoChip(shot.meta.comments)
             }
@@ -911,21 +915,24 @@ private fun EightBallFullscreenImage(
     }
 }
 
-private fun buildEightBallFeedback(correct: Boolean, actualBall: Int): String {
+private fun buildEightBallFeedback(correct: Boolean, actualBall: Int, language: SiteLanguage): String {
     val lead = if (correct) {
         positiveEightBallFeedback[Random.nextInt(positiveEightBallFeedback.size)]
     } else {
         negativeEightBallFeedback[Random.nextInt(negativeEightBallFeedback.size)]
     }
-    return "$lead It was the ${ballLabel(actualBall)} ball."
+    return language.text(
+        "$lead It was the ${ballLabel(actualBall)} ball.",
+        "Riktig ball var ${ballLabel(actualBall)}.",
+    )
 }
 
-private fun shootingGroupLabel(meta: EightBallMeta): String {
+private fun shootingGroupLabel(meta: EightBallMeta, language: SiteLanguage): String {
     return when (meta.group) {
-        0 -> "${meta.player}, open table"
-        1 -> "${meta.player} shoots solids"
-        2 -> "${meta.player} shoots stripes"
-        else -> "${meta.player} shoots group ${meta.group}"
+        0 -> language.text("${meta.player}, open table", "${meta.player}, åpent bord")
+        1 -> language.text("${meta.player} shoots solids", "${meta.player} skyter lave")
+        2 -> language.text("${meta.player} shoots stripes", "${meta.player} skyter høye")
+        else -> language.text("${meta.player} shoots group ${meta.group}", "${meta.player} skyter gruppe ${meta.group}")
     }
 }
 
@@ -999,4 +1006,3 @@ private fun parseEightBallMeta(text: String): EightBallMeta {
 private fun fetchEightBallText(url: String, onSuccess: (String) -> Unit, onError: (String) -> Unit) {
     js("fetch(url).then(function(response) { if (!response.ok) { throw new Error(response.status + ' ' + response.statusText); } return response.text(); }).then(function(text) { onSuccess(text); }).catch(function(error) { onError(String(error)); });")
 }
-

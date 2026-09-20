@@ -45,6 +45,9 @@ import com.varabyte.kobweb.silk.components.text.SpanText
 import com.varabyte.kobweb.site.components.style.MutedSpanTextVariant
 import com.varabyte.kobweb.site.components.style.SiteTextSize
 import com.varabyte.kobweb.site.components.style.siteText
+import com.varabyte.kobweb.site.model.LocalSiteLanguage
+import com.varabyte.kobweb.site.model.SiteLanguage
+import com.varabyte.kobweb.site.model.text
 import kotlinx.browser.window
 import org.jetbrains.compose.web.css.FlexWrap
 import org.jetbrains.compose.web.css.LineStyle
@@ -261,6 +264,7 @@ fun Billiard2Screen() {
 
 @Composable
 private fun BilliardsTrainerScreen(variant: TrainerVariant) {
+    val language = LocalSiteLanguage.current
     val isMobile = rememberIsMobileLayout()
     val tableBallRadius = if (isMobile) MOBILE_TABLE_BALL_RADIUS else BALL_RADIUS
     val overlapBallRadius = if (isMobile) MOBILE_OVERLAP_BALL_RADIUS else OVERLAP_BALL_RADIUS
@@ -315,10 +319,17 @@ private fun BilliardsTrainerScreen(variant: TrainerVariant) {
             horizontalAlignment = Alignment.Start,
         ) {
             H1 {
-                Text(variant.heading)
+                Text(language.text(variant.heading, if (variant.label == "Billiard2") "Billiard2" else "Fraksjonssikting"))
             }
             SpanText(
-                variant.description,
+                language.text(
+                    variant.description,
+                    if (variant.label == "Billiard2") {
+                        "Vertikalt to-tredjedels bord med topphjørner som mål, synlige sidehull, ingen bunnvant og vertikalt justerte ballposisjoner."
+                    } else {
+                        "Studer det tilfeldige oppsettet, les kuttet mot det markerte hullet, og gjenskap cue-ball-overlappen under."
+                    },
+                ),
                 Modifier.maxWidth(75.cssRem).siteText(SiteTextSize.NORMAL),
                 MutedSpanTextVariant
             )
@@ -426,8 +437,8 @@ private fun BilliardsTrainerScreen(variant: TrainerVariant) {
             }
 
             Row(Modifier.gap(0.75.cssRem).flexWrap(FlexWrap.Wrap)) {
-                ActionButton("Check overlap") { submitted = true }
-                ActionButton("New layout") { setup = generateShotSetup(variant.tableSpec) }
+                ActionButton(language.text("Check overlap", "Sjekk overlapp")) { submitted = true }
+                ActionButton(language.text("New layout", "Nytt oppsett")) { setup = generateShotSetup(variant.tableSpec) }
             }
 
             Column(Modifier.gap(0.35.cssRem)) {
@@ -438,10 +449,10 @@ private fun BilliardsTrainerScreen(variant: TrainerVariant) {
                         .color(Colors.White)
                         .toAttrs()
                 ) {
-                    Text("Fractional overlap")
+                    Text(language.text("Fractional overlap", "Fraksjonell overlapp"))
                 }
                 SpanText(
-                    "Click and drag the cue ball horizontally over the object ball to recreate the contact picture for the shot above.",
+                    language.text("Click and drag the cue ball horizontally over the object ball to recreate the contact picture for the shot above.", "Klikk og dra køballen horisontalt over objektballen for å gjenskape treffbildet for støtet over."),
                     Modifier.siteText(SiteTextSize.SMALL),
                     MutedSpanTextVariant
                 )
@@ -454,6 +465,7 @@ private fun BilliardsTrainerScreen(variant: TrainerVariant) {
                 angleError = angleError,
                 perfectOverlapPercent = perfectOverlapPercent,
                 userOverlapPercent = userOverlapPercent,
+                language = language,
             )
         }
     }
@@ -865,6 +877,7 @@ private fun ResultPanel(
     angleError: Double,
     perfectOverlapPercent: Double,
     userOverlapPercent: Double,
+    language: SiteLanguage,
 ) {
     if (!submitted) {
         P(
@@ -875,24 +888,24 @@ private fun ResultPanel(
                 .color(Color.rgba(255, 255, 255, 0.68f))
                 .toAttrs()
         ) {
-            Text("When you check the overlap, the trainer will reveal the correct contact picture and show how many degrees your shot would miss the required cut.")
+            Text(language.text("When you check the overlap, the trainer will reveal the correct contact picture and show how many degrees your shot would miss the required cut.", "Når du sjekker overlappen, viser treneren riktig treffbilde og hvor mange grader støtet ditt ville bommet på kuttet."))
         }
         return
     }
 
     val absError = abs(angleError)
     val feedback = when {
-        absError < 2.0 -> "Dead on."
-        absError < 7.0 -> "Nice shot!"
-        absError < 15.0 -> "Not bad."
-        absError < 20.0 -> "That was a bit off."
-        else -> "That was clearly off."
+        absError < 2.0 -> language.text("Dead on.", "Midt i.")
+        absError < 7.0 -> language.text("Nice shot!", "Bra støt!")
+        absError < 15.0 -> language.text("Not bad.", "Ikke verst.")
+        absError < 20.0 -> language.text("That was a bit off.", "Det var litt feil.")
+        else -> language.text("That was clearly off.", "Det var tydelig feil.")
     }
 
     val directionalMiss = when {
-        angleError > 0.15 -> "Your overlap sends the object ball ${angleDirectionLabel(angleError)} of the target line."
-        angleError < -0.15 -> "Your overlap sends the object ball ${angleDirectionLabel(angleError)} of the target line."
-        else -> "Your overlap sends the object ball on the target line."
+        angleError > 0.15 -> language.text("Your overlap sends the object ball ${angleDirectionLabel(angleError, language)} of the target line.", "Overlappen din sender objektballen ${angleDirectionLabel(angleError, language)} for mållinjen.")
+        angleError < -0.15 -> language.text("Your overlap sends the object ball ${angleDirectionLabel(angleError, language)} of the target line.", "Overlappen din sender objektballen ${angleDirectionLabel(angleError, language)} for mållinjen.")
+        else -> language.text("Your overlap sends the object ball on the target line.", "Overlappen din sender objektballen på mållinjen.")
     }
 
     Column(
@@ -910,7 +923,7 @@ private fun ResultPanel(
                 .color(Colors.White)
                 .toAttrs()
         ) {
-            Text("${formatDegreesText(absError)} off. $feedback")
+            Text(language.text("${formatDegreesText(absError)} off. $feedback", "${formatDegreesText(absError)} feil. $feedback"))
         }
         P(
             attrs = Modifier
@@ -920,7 +933,7 @@ private fun ResultPanel(
                 .color(Color.rgba(255, 255, 255, 0.78f))
                 .toAttrs()
         ) {
-            Text("$directionalMiss Required cut: ${formatSignedDegreesText(perfectAngle)}. Your overlap built: ${formatSignedDegreesText(userAngle)}.")
+            Text(language.text("$directionalMiss Required cut: ${formatSignedDegreesText(perfectAngle)}. Your overlap built: ${formatSignedDegreesText(userAngle)}.", "$directionalMiss Nødvendig kutt: ${formatSignedDegreesText(perfectAngle)}. Din overlapp ga: ${formatSignedDegreesText(userAngle)}."))
         }
         P(
             attrs = Modifier
@@ -931,8 +944,10 @@ private fun ResultPanel(
                 .toAttrs()
         ) {
             Text(
-                "Required overlap: ${formatPercentText(perfectOverlapPercent)} ${overlapSideLabel(perfectAngle)}. " +
-                    "Your overlap: ${formatPercentText(userOverlapPercent)} ${overlapSideLabel(userAngle)}."
+                language.text(
+                    "Required overlap: ${formatPercentText(perfectOverlapPercent)} ${overlapSideLabel(perfectAngle, language)}. Your overlap: ${formatPercentText(userOverlapPercent)} ${overlapSideLabel(userAngle, language)}.",
+                    "Nødvendig overlapp: ${formatPercentText(perfectOverlapPercent)} ${overlapSideLabel(perfectAngle, language)}. Din overlapp: ${formatPercentText(userOverlapPercent)} ${overlapSideLabel(userAngle, language)}.",
+                )
             )
         }
     }
@@ -1170,15 +1185,15 @@ private fun formatSignedDegreesText(value: Double): String {
     return "${if (rounded > 0) "+" else ""}$rounded deg"
 }
 
-private fun angleDirectionLabel(angleDegrees: Double): String {
-    return if (angleDegrees > 0) "to the right" else "to the left"
+private fun angleDirectionLabel(angleDegrees: Double, language: SiteLanguage): String {
+    return if (angleDegrees > 0) language.text("to the right", "til høyre") else language.text("to the left", "til venstre")
 }
 
-private fun overlapSideLabel(angleDegrees: Double): String {
+private fun overlapSideLabel(angleDegrees: Double, language: SiteLanguage): String {
     return when {
-        angleDegrees > 2.0 -> "(left-side)"
-        angleDegrees < -2.0 -> "(right-side)"
-        else -> "(center-ball)"
+        angleDegrees > 2.0 -> language.text("(left-side)", "(venstre side)")
+        angleDegrees < -2.0 -> language.text("(right-side)", "(høyre side)")
+        else -> language.text("(center-ball)", "(senterball)")
     }
 }
 
