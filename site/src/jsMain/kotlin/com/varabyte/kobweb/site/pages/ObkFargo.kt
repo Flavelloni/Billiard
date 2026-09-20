@@ -53,7 +53,6 @@ import org.jetbrains.compose.web.dom.H2
 import org.jetbrains.compose.web.dom.Input
 import org.jetbrains.compose.web.dom.P
 import org.jetbrains.compose.web.dom.Span
-import org.jetbrains.compose.web.dom.Style
 import org.jetbrains.compose.web.dom.Text
 import kotlin.math.abs
 import kotlin.math.pow
@@ -130,28 +129,6 @@ fun ObkFargoPage() {
             },
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Style {
-            Text(
-                """
-                @media (max-width: 720px) {
-                  .obk-player-header {
-                    display: none !important;
-                  }
-                  .obk-player-row {
-                    display: block !important;
-                    min-height: 0 !important;
-                  }
-                  .obk-player-desktop-cell {
-                    display: none !important;
-                  }
-                  .obk-player-mobile-card {
-                    display: block !important;
-                  }
-                }
-                """.trimIndent()
-            )
-        }
-
         Column(
             Modifier
                 .fillMaxWidth()
@@ -578,7 +555,6 @@ private fun PlayerListPanel(
                     }
                     .toAttrs()
             ) {
-                PlayerListHeader()
                 players.take(120).forEachIndexed { index, player ->
                     PlayerRow(index + 1, player, language)
                 }
@@ -623,86 +599,63 @@ private fun PlayerRow(index: Int, player: FargoPlayer, language: SiteLanguage) {
     Div(
         attrs = Modifier
             .fillMaxWidth()
-            .padding(leftRight = 0.9.cssRem, topBottom = 0.72.cssRem)
+            .padding(0.95.cssRem)
             .borderRadius(14.px)
             .backgroundColor(Color.rgba(255, 255, 255, 0.055f))
             .border(1.px, LineStyle.Solid, Color.rgba(255, 255, 255, 0.08f))
             .color(Colors.White)
             .fontSize(0.92.cssRem)
             .styleModifier {
-                property("display", "grid")
-                property("grid-template-columns", "56px minmax(220px, 1fr) 110px 130px 100px")
-                property("column-gap", "1rem")
-                property("align-items", "center")
-                property("min-height", "54px")
+                property("box-sizing", "border-box")
                 property("min-width", "0")
             }
-            .toAttrs {
-                classes("obk-player-row")
-            }
+            .toAttrs()
     ) {
-        PlayerDesktopCell(index.toString(), muted = true)
-        PlayerDesktopCell(player.name, strong = true)
-        PlayerDesktopCell(formatRating(player.fargoRating))
-        PlayerDesktopCell(formatOptionalRating(player.latestHandicap))
-        PlayerDesktopCell("${player.wins}-${player.losses}")
-
-        Div(
-            attrs = Modifier
-                .styleModifier {
-                    property("display", "none")
-                    property("grid-column", "1 / -1")
-                }
-                .toAttrs {
-                    classes("obk-player-mobile-card")
-                }
-        ) {
-            Column(Modifier.fillMaxWidth().gap(0.72.cssRem)) {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .gap(0.8.cssRem),
-                    verticalAlignment = Alignment.Top,
-                ) {
-                    Span(
-                        attrs = Modifier
-                            .fontSize(0.82.cssRem)
-                            .fontWeight(FontWeight.Bold)
-                            .color(Color.rgba(245, 248, 244, 0.52f))
-                            .styleModifier { property("flex", "0 0 2.2rem") }
-                            .toAttrs()
-                    ) {
-                        Text("#$index")
-                    }
-                    Span(
-                        attrs = Modifier
-                            .fontSize(1.04.cssRem)
-                            .fontWeight(FontWeight.Bold)
-                            .lineHeight(1.25)
-                            .color(Color.rgba(245, 248, 244, 0.94f))
-                            .styleModifier {
-                                property("min-width", "0")
-                                property("overflow-wrap", "anywhere")
-                            }
-                            .toAttrs()
-                    ) {
-                        Text(player.name)
-                    }
-                }
-                Div(
+        Column(Modifier.fillMaxWidth().gap(0.72.cssRem)) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .gap(0.8.cssRem),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Span(
                     attrs = Modifier
-                        .fillMaxWidth()
+                        .fontSize(0.82.cssRem)
+                        .fontWeight(FontWeight.Bold)
+                        .color(Color.rgba(245, 248, 244, 0.52f))
+                        .styleModifier { property("flex", "0 0 2.2rem") }
+                        .toAttrs()
+                ) {
+                    Text("#$index")
+                }
+                Span(
+                    attrs = Modifier
+                        .fontSize(1.04.cssRem)
+                        .fontWeight(FontWeight.Bold)
+                        .lineHeight(1.25)
+                        .color(Color.rgba(245, 248, 244, 0.94f))
                         .styleModifier {
-                            property("display", "grid")
-                            property("grid-template-columns", "repeat(3, minmax(0, 1fr))")
-                            property("gap", "0.55rem")
+                            property("min-width", "0")
+                            property("overflow-wrap", "anywhere")
                         }
                         .toAttrs()
                 ) {
-                    PlayerMobileStat("Fargo", formatRating(player.fargoRating))
-                    PlayerMobileStat(language.text("Simple OBK", "Enkel OBK"), formatOptionalRating(player.latestHandicap))
-                    PlayerMobileStat(language.text("Record", "Statistikk"), "${player.wins}-${player.losses}")
+                    Text(player.name)
                 }
+            }
+            Div(
+                attrs = Modifier
+                    .fillMaxWidth()
+                    .styleModifier {
+                        property("display", "grid")
+                        property("grid-template-columns", "repeat(3, minmax(0, 1fr))")
+                        property("gap", "0.55rem")
+                    }
+                    .toAttrs()
+            ) {
+                PlayerMobileStat("Fargo", formatRating(player.fargoRating))
+                PlayerMobileStat(language.text("Simple OBK", "Enkel OBK"), formatOptionalRating(player.latestHandicap))
+                PlayerMobileStat(language.text("Record", "Statistikk"), "${player.wins}-${player.losses}")
             }
         }
     }
