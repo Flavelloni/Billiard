@@ -397,6 +397,7 @@ private fun MatchupResult(firstPlayer: FargoPlayer?, secondPlayer: FargoPlayer?,
                         .fillMaxWidth()
                         .gap(0.7.cssRem)
                         .styleModifier {
+                            property("display", "flex")
                             property("flex-direction", "column")
                         },
                     verticalAlignment = Alignment.Top,
@@ -412,7 +413,7 @@ private fun MatchupResult(firstPlayer: FargoPlayer?, secondPlayer: FargoPlayer?,
                         .color(Color.rgba(245, 248, 244, 0.6f))
                         .toAttrs()
                 ) {
-                    Text(language.text("The CSV contains aggregate OBK records, not direct opponent-by-opponent match history. The head-to-head figures here are calculated from Fargo rating difference.", "CSV-filen inneholder samlet OBK-statistikk, ikke direkte kampstatistikk spiller mot spiller. Head-to-head-tallene her beregnes fra Fargo-ratingforskjellen."))
+                    Text(language.text("The head-to-head figures here are calculated from Fargo rating difference, not from direct head-to-head stats.", "Tallene her beregnes fra Fargo-ratingforskjellen, ikke direkte head-to-head kampstatistikk."))
                 }
             }
         }
@@ -456,7 +457,10 @@ private fun RaceSuggestionCard(raceTo: Int, firstPlayer: FargoPlayer, secondPlay
             .backgroundColor(Color.rgba(239, 190, 83, 0.12f))
             .border(1.px, LineStyle.Solid, Color.rgba(239, 190, 83, 0.3f))
             .gap(0.35.cssRem)
-            .styleModifier { property("flex", "1 1 260px") }
+            .styleModifier {
+                property("width", "100%")
+                property("box-sizing", "border-box")
+            }
     ) {
         Span(
             attrs = Modifier
