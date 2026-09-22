@@ -72,6 +72,9 @@ private enum class FargoSortMode {
     Obk,
 }
 
+private const val ROBUST_FARGO_GAME_THRESHOLD = 200
+private const val INITIAL_LIST_MIN_GAMES = 100
+
 @InitRoute
 fun initObkFargoPage(ctx: InitRouteContext) {
     ctx.data.add(PageLayoutData("OBK Fargo Rating", "Oslo Biljardklubb Fargo-style ratings and matchup helper."))
@@ -109,8 +112,15 @@ fun ObkFargoPage() {
     }
 
     val loadedPlayers = players.orEmpty()
+    val trimmedFilter = playerFilter.trim()
     val filteredPlayers = loadedPlayers
-        .filter { playerFilter.isBlank() || it.name.contains(playerFilter, ignoreCase = true) }
+        .filter {
+            if (trimmedFilter.isBlank()) {
+                it.games >= INITIAL_LIST_MIN_GAMES
+            } else {
+                it.name.contains(trimmedFilter, ignoreCase = true)
+            }
+        }
         .sortedWith(
             when (sortMode) {
                 FargoSortMode.Fargo -> compareByDescending<FargoPlayer> { it.fargoRating }.thenBy { it.name }
@@ -155,7 +165,7 @@ fun ObkFargoPage() {
                     .color(Color.rgba(245, 248, 244, 0.76f))
                     .toAttrs()
             ) {
-                Text(language.text("Ratings are calculated solely from Oslo Biljardklubb tournaments from the last ${historyYears ?: "?"} years.", "Ratingene er beregnet kun fra Oslo Biljardklubb-turneringer fra de siste ${historyYears ?: "?"} årene."))
+                Text(language.text("Ratings are calculated solely from Oslo Biljardklubb tournaments.", "Ratingene er beregnet kun fra Oslo Biljardklubb-turneringer."))
             }
         }
 
@@ -440,7 +450,7 @@ private fun PlayerComparisonCard(player: FargoPlayer, probability: Double) {
         ) {
             Text(player.name)
         }
-        FargoStatLine("Fargo", formatRating(player.fargoRating))
+        FargoStatLine("Fargo", formatRating(player.fargoRating), valueColor = fargoRobustnessColor(player.games))
         FargoStatLine(LocalSiteLanguage.current.text("Simple OBK", "Enkel OBK"), formatOptionalRating(player.latestHandicap))
         FargoStatLine(LocalSiteLanguage.current.text("OBK record", "OBK-statistikk"), "${player.wins}-${player.losses} (${player.games} ${LocalSiteLanguage.current.text("games", "partier")})")
         FargoStatLine(LocalSiteLanguage.current.text("Expected rack win", "Forventet partisjanse"), formatPercent(probability))
@@ -532,7 +542,16 @@ private fun PlayerListPanel(
                         .color(Color.rgba(245, 248, 244, 0.64f))
                         .toAttrs()
                 ) {
-                    Text(language.text("${players.size} of $totalPlayers players", "${players.size} av $totalPlayers spillere"))
+                    Text(
+                        if (filter.isBlank()) {
+                            language.text(
+                                "${players.size} players with 100+ games",
+                                "${players.size} spillere med 100+ partier",
+                            )
+                        } else {
+                            language.text("${players.size} of $totalPlayers players", "${players.size} av $totalPlayers spillere")
+                        }
+                    )
                 }
             }
             Row(
@@ -547,6 +566,27 @@ private fun PlayerListPanel(
                     FargoInput(filter, language.text("Filter player", "Filtrer spiller"), onFilter)
                 }
             }
+        }
+
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .gap(0.55.cssRem)
+                .flexWrap(FlexWrap.Wrap),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            RobustnessLegendChip(
+                color = robustFargoColor,
+                text = language.text("Green Fargo: 200+ recorded games", "Grønn Fargo: 200+ registrerte partier"),
+            )
+            RobustnessLegendChip(
+                color = provisionalFargoColor,
+                text = language.text("Red Fargo: under 200 games, less robust", "Rød Fargo: under 200 partier, mindre robust"),
+            )
+            RobustnessLegendChip(
+                color = Color.rgba(245, 248, 244, 0.56f),
+                text = language.text("Initial list hides players below 100 games; search still finds them", "Startlisten skjuler spillere under 100 partier; søk finner dem fortsatt"),
+            )
         }
 
         Column(Modifier.fillMaxWidth().gap(0.65.cssRem)) {
@@ -657,7 +697,7 @@ private fun PlayerRow(index: Int, player: FargoPlayer, language: SiteLanguage) {
                     }
                     .toAttrs()
             ) {
-                PlayerMobileStat("Fargo", formatRating(player.fargoRating))
+                PlayerMobileStat("Fargo", formatRating(player.fargoRating), valueColor = fargoRobustnessColor(player.games))
                 PlayerMobileStat(language.text("Simple OBK", "Enkel OBK"), formatOptionalRating(player.latestHandicap))
                 PlayerMobileStat(language.text("Record", "Statistikk"), "${player.wins}-${player.losses}")
             }
@@ -688,7 +728,7 @@ private fun PlayerDesktopCell(text: String, strong: Boolean = false, muted: Bool
 }
 
 @Composable
-private fun PlayerMobileStat(label: String, value: String) {
+private fun PlayerMobileStat(label: String, value: String, valueColor: Color = Color.rgba(245, 248, 244, 0.92f)) {
     Column(
         Modifier
             .padding(leftRight = 0.58.cssRem, topBottom = 0.5.cssRem)
@@ -718,7 +758,7 @@ private fun PlayerMobileStat(label: String, value: String) {
                 .fontSize(0.96.cssRem)
                 .fontWeight(FontWeight.Bold)
                 .lineHeight(1.2)
-                .color(Color.rgba(245, 248, 244, 0.92f))
+                .color(valueColor)
                 .toAttrs()
         ) {
             Text(value)
@@ -822,7 +862,39 @@ private fun FargoChip(text: String) {
 }
 
 @Composable
-private fun FargoStatLine(label: String, value: String) {
+private fun RobustnessLegendChip(color: Color, text: String) {
+    Row(
+        Modifier
+            .padding(leftRight = 0.62.cssRem, topBottom = 0.42.cssRem)
+            .borderRadius(999.px)
+            .backgroundColor(Color.rgba(255, 255, 255, 0.055f))
+            .border(1.px, LineStyle.Solid, Color.rgba(255, 255, 255, 0.1f))
+            .gap(0.4.cssRem),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Span(
+            attrs = Modifier
+                .fontSize(1.05.cssRem)
+                .lineHeight(1.0)
+                .color(color)
+                .toAttrs()
+        ) {
+            Text("●")
+        }
+        Span(
+            attrs = Modifier
+                .fontSize(0.82.cssRem)
+                .lineHeight(1.25)
+                .color(Color.rgba(245, 248, 244, 0.68f))
+                .toAttrs()
+        ) {
+            Text(text)
+        }
+    }
+}
+
+@Composable
+private fun FargoStatLine(label: String, value: String, valueColor: Color = Color.rgba(245, 248, 244, 0.9f)) {
     Row(
         Modifier.fillMaxWidth().gap(0.65.cssRem),
         verticalAlignment = Alignment.CenterVertically,
@@ -840,7 +912,7 @@ private fun FargoStatLine(label: String, value: String) {
             attrs = Modifier
                 .fontSize(0.92.cssRem)
                 .fontWeight(FontWeight.SemiBold)
-                .color(Color.rgba(245, 248, 244, 0.9f))
+                .color(valueColor)
                 .toAttrs()
         ) {
             Text(value)
@@ -849,20 +921,29 @@ private fun FargoStatLine(label: String, value: String) {
 }
 
 private fun parseFargoPlayers(csv: String): List<FargoPlayer> {
-    return csv.lineSequence()
+    val lines = csv.lineSequence().filter { it.isNotBlank() }.toList()
+    if (lines.isEmpty()) return emptyList()
+
+    val header = parseCsvLine(lines.first())
+    val columnIndex = header.withIndex().associate { it.value to it.index }
+
+    fun List<String>.value(column: String): String {
+        val index = columnIndex[column] ?: return ""
+        return getOrNull(index).orEmpty()
+    }
+
+    return lines.asSequence()
         .drop(1)
         .mapNotNull { line ->
-            if (line.isBlank()) return@mapNotNull null
             val columns = parseCsvLine(line)
-            if (columns.size < 10) return@mapNotNull null
             FargoPlayer(
-                id = columns[0],
-                name = columns[1],
-                fargoRating = columns[2].toDoubleOrNull() ?: return@mapNotNull null,
-                latestHandicap = columns[3].toDoubleOrNull(),
-                games = columns[6].toIntOrNull() ?: 0,
-                wins = columns[7].toIntOrNull() ?: 0,
-                losses = columns[8].toIntOrNull() ?: 0,
+                id = columns.value("player_id"),
+                name = columns.value("player_name"),
+                fargoRating = columns.value("fargo_rating").toDoubleOrNull() ?: return@mapNotNull null,
+                latestHandicap = columns.value("latest_handicap").toDoubleOrNull(),
+                games = columns.value("games").toIntOrNull() ?: 0,
+                wins = columns.value("wins").toIntOrNull() ?: 0,
+                losses = columns.value("losses").toIntOrNull() ?: 0,
             )
         }
         .toList()
@@ -896,6 +977,14 @@ private fun parseCsvLine(line: String): List<String> {
 private fun parseFargoHistoryYears(json: String): String {
     val item = js("JSON.parse(json)")
     return (item.history_years as? String).orEmpty().ifBlank { "?" }
+}
+
+private val robustFargoColor = Color.rgb(126, 218, 116)
+
+private val provisionalFargoColor = Color.rgb(255, 114, 114)
+
+private fun fargoRobustnessColor(games: Int): Color {
+    return if (games >= ROBUST_FARGO_GAME_THRESHOLD) robustFargoColor else provisionalFargoColor
 }
 
 private fun fargoGameProbability(rating: Double, opponentRating: Double): Double {
