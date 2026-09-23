@@ -50,6 +50,7 @@ import org.jetbrains.compose.web.dom.Button
 import org.jetbrains.compose.web.dom.Div
 import org.jetbrains.compose.web.dom.H1
 import org.jetbrains.compose.web.dom.H2
+import org.jetbrains.compose.web.dom.Img
 import org.jetbrains.compose.web.dom.Input
 import org.jetbrains.compose.web.dom.P
 import org.jetbrains.compose.web.dom.Span
@@ -60,6 +61,8 @@ import kotlin.math.pow
 private data class FargoPlayer(
     val id: String,
     val name: String,
+    val image: String,
+    val countryImage: String,
     val fargoRating: Double,
     val latestHandicap: Double?,
     val games: Int,
@@ -560,8 +563,17 @@ private fun PlayerListPanel(
                     .flexWrap(FlexWrap.Wrap),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                SortButton("Fargo", sortMode == FargoSortMode.Fargo) { onSortMode(FargoSortMode.Fargo) }
-                SortButton(language.text("Simple OBK", "Enkel OBK"), sortMode == FargoSortMode.Obk) { onSortMode(FargoSortMode.Obk) }
+                Span(
+                    attrs = Modifier
+                        .fontSize(0.82.cssRem)
+                        .fontWeight(FontWeight.Bold)
+                        .color(Color.rgba(245, 248, 244, 0.68f))
+                        .toAttrs()
+                ) {
+                    Text(language.text("Sort by", "Sorter etter"))
+                }
+                SortButton(language.text("Fargo rating", "Fargo-rating"), sortMode == FargoSortMode.Fargo) { onSortMode(FargoSortMode.Fargo) }
+                SortButton(language.text("Simple OBK rating", "Enkel OBK-rating"), sortMode == FargoSortMode.Obk) { onSortMode(FargoSortMode.Obk) }
                 Div(attrs = Modifier.width(230.px).toAttrs()) {
                     FargoInput(filter, language.text("Filter player", "Filtrer spiller"), onFilter)
                 }
@@ -672,20 +684,7 @@ private fun PlayerRow(index: Int, player: FargoPlayer, language: SiteLanguage) {
                 ) {
                     Text("#$index")
                 }
-                Span(
-                    attrs = Modifier
-                        .fontSize(1.04.cssRem)
-                        .fontWeight(FontWeight.Bold)
-                        .lineHeight(1.25)
-                        .color(Color.rgba(245, 248, 244, 0.94f))
-                        .styleModifier {
-                            property("min-width", "0")
-                            property("overflow-wrap", "anywhere")
-                        }
-                        .toAttrs()
-                ) {
-                    Text(player.name)
-                }
+                PlayerIdentity(player)
             }
             Div(
                 attrs = Modifier
@@ -703,6 +702,71 @@ private fun PlayerRow(index: Int, player: FargoPlayer, language: SiteLanguage) {
             }
         }
     }
+}
+
+@Composable
+private fun PlayerIdentity(player: FargoPlayer) {
+    Row(
+        Modifier
+            .gap(0.55.cssRem)
+            .styleModifier {
+                property("min-width", "0")
+                property("flex", "1 1 auto")
+            },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        PlayerImage(
+            src = player.image,
+            alt = player.name,
+            width = "2.35rem",
+            height = "2.35rem",
+            radius = "50%",
+        )
+        Span(
+            attrs = Modifier
+                .fontSize(1.04.cssRem)
+                .fontWeight(FontWeight.Bold)
+                .lineHeight(1.25)
+                .color(Color.rgba(245, 248, 244, 0.94f))
+                .styleModifier {
+                    property("min-width", "0")
+                    property("overflow-wrap", "anywhere")
+                }
+                .toAttrs()
+        ) {
+            Text(player.name)
+        }
+        PlayerImage(
+            src = player.countryImage,
+            alt = "${player.name} country",
+            width = "1.65rem",
+            height = "1.1rem",
+            radius = "3px",
+        )
+    }
+}
+
+@Composable
+private fun PlayerImage(src: String, alt: String, width: String, height: String, radius: String) {
+    if (src.isBlank()) return
+
+    Img(
+        src = src,
+        attrs = Modifier
+            .styleModifier {
+                property("width", width)
+                property("height", height)
+                property("border-radius", radius)
+                property("object-fit", "cover")
+                property("flex", "0 0 auto")
+                property("background", "rgba(255, 255, 255, 0.1)")
+            }
+            .toAttrs {
+                attr("alt", alt)
+                attr("loading", "lazy")
+                attr("referrerpolicy", "no-referrer")
+            }
+    )
 }
 
 @Composable
@@ -939,6 +1003,8 @@ private fun parseFargoPlayers(csv: String): List<FargoPlayer> {
             FargoPlayer(
                 id = columns.value("player_id"),
                 name = columns.value("player_name"),
+                image = columns.value("image"),
+                countryImage = columns.value("countryImage"),
                 fargoRating = columns.value("fargo_rating").toDoubleOrNull() ?: return@mapNotNull null,
                 latestHandicap = columns.value("latest_handicap").toDoubleOrNull(),
                 games = columns.value("games").toIntOrNull() ?: 0,
