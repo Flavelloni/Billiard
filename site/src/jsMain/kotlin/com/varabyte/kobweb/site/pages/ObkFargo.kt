@@ -22,6 +22,7 @@ import com.varabyte.kobweb.compose.ui.modifiers.flexWrap
 import com.varabyte.kobweb.compose.ui.modifiers.fontSize
 import com.varabyte.kobweb.compose.ui.modifiers.fontWeight
 import com.varabyte.kobweb.compose.ui.modifiers.gap
+import com.varabyte.kobweb.compose.ui.modifiers.height
 import com.varabyte.kobweb.compose.ui.modifiers.lineHeight
 import com.varabyte.kobweb.compose.ui.modifiers.margin
 import com.varabyte.kobweb.compose.ui.modifiers.maxWidth
@@ -34,8 +35,8 @@ import com.varabyte.kobweb.core.data.add
 import com.varabyte.kobweb.core.init.InitRoute
 import com.varabyte.kobweb.core.init.InitRouteContext
 import com.varabyte.kobweb.core.layout.Layout
-import com.varabyte.kobweb.navigation.BasePath
 import com.varabyte.kobweb.site.components.layouts.PageLayoutData
+import com.varabyte.kobweb.site.components.widgets.PoolBall
 import com.varabyte.kobweb.site.model.LocalSiteLanguage
 import com.varabyte.kobweb.site.model.SiteLanguage
 import com.varabyte.kobweb.site.model.text
@@ -68,6 +69,24 @@ private data class FargoPlayer(
     val games: Int,
     val wins: Int,
     val losses: Int,
+    val disciplineRatings: List<FargoDisciplineRating>,
+)
+
+private data class FargoDisciplineRating(
+    val component: String,
+    val fargoRating: Double?,
+    val games: Int,
+    val wins: Int,
+    val losses: Int,
+)
+
+private data class PlayerPairStats(
+    val firstPlayerId: String,
+    val secondPlayerId: String,
+    val component: String,
+    val firstWins: Int,
+    val secondWins: Int,
+    val games: Int,
 )
 
 private enum class FargoSortMode {
@@ -75,6 +94,43 @@ private enum class FargoSortMode {
     Obk,
 }
 
+private data class FargoDiscipline(
+    val component: String,
+    val badge: String,
+    val english: String,
+    val norwegian: String,
+    val background: Color,
+    val border: Color,
+    val foreground: Color,
+) {
+    fun label(language: SiteLanguage): String = language.text(english, norwegian)
+}
+
+private data class RaceSuggestion(
+    val raceTo: Int,
+    val favorite: FargoPlayer,
+    val underdog: FargoPlayer,
+    val favoriteStart: Int,
+    val underdogStart: Int,
+    val favoriteWinProbability: Double,
+) {
+    fun startText(language: SiteLanguage): String {
+        return if (favoriteStart == 0 && underdogStart == 0) {
+            language.text("Even race", "Jevnt race")
+        } else {
+            language.text(
+                "${underdog.name} starts $underdogStart-$favoriteStart",
+                "${underdog.name} starter $underdogStart-$favoriteStart",
+            )
+        }
+    }
+}
+
+private const val OVERALL_COMPONENT = "1"
+private const val EIGHT_BALL_COMPONENT = "8"
+private const val NINE_BALL_COMPONENT = "9"
+private const val TEN_BALL_COMPONENT = "10"
+private const val OBK_GITHUB_RAW_BASE = "https://raw.githubusercontent.com/Flavelloni/Cue-Score/main/OBK"
 private const val ROBUST_FARGO_GAME_THRESHOLD = 200
 private const val INITIAL_LIST_MIN_GAMES = 100
 
@@ -89,6 +145,7 @@ fun initObkFargoPage(ctx: InitRouteContext) {
 fun ObkFargoPage() {
     val language = LocalSiteLanguage.current
     var players by remember { mutableStateOf<List<FargoPlayer>?>(null) }
+    var playerPairs by remember { mutableStateOf<List<PlayerPairStats>>(emptyList()) }
     var historyYears by remember { mutableStateOf<String?>(null) }
     var loadError by remember { mutableStateOf<String?>(null) }
     var sortMode by remember { mutableStateOf(FargoSortMode.Fargo) }
@@ -100,7 +157,7 @@ fun ObkFargoPage() {
 
     LaunchedEffect(Unit) {
         fetchFargoText(
-            BasePath.prependTo("/fargo/player_fargo_ratings.csv"),
+            "$OBK_GITHUB_RAW_BASE/player_fargo_ratings.csv",
             onSuccess = {
                 players = parseFargoPlayers(it)
                 loadError = null
@@ -108,9 +165,14 @@ fun ObkFargoPage() {
             onError = { loadError = language.text("Could not load Fargo ratings: $it", "Kunne ikke laste Fargo-ratinger: $it") },
         )
         fetchFargoText(
-            BasePath.prependTo("/fargo/meta.json"),
-            onSuccess = { historyYears = parseFargoHistoryYears(it) },
+            "$OBK_GITHUB_RAW_BASE/tournament_stats_by_year.csv",
+            onSuccess = { historyYears = parseFargoHistoryYearsFromCsv(it) },
             onError = { historyYears = null },
+        )
+        fetchFargoText(
+            "$OBK_GITHUB_RAW_BASE/player_pairs.csv",
+            onSuccess = { playerPairs = parsePlayerPairs(it) },
+            onError = { playerPairs = emptyList() },
         )
     }
 
@@ -179,6 +241,7 @@ fun ObkFargoPage() {
                 MatchupPanel(
                     language = language,
                     players = loadedPlayers,
+                    playerPairs = playerPairs,
                     firstQuery = firstQuery,
                     secondQuery = secondQuery,
                     firstPlayer = firstPlayer,
@@ -234,6 +297,7 @@ private fun FargoMessage(message: String) {
 private fun MatchupPanel(
     language: SiteLanguage,
     players: List<FargoPlayer>,
+    playerPairs: List<PlayerPairStats>,
     firstQuery: String,
     secondQuery: String,
     firstPlayer: FargoPlayer?,
@@ -285,7 +349,7 @@ private fun MatchupPanel(
                         .color(Color.rgba(245, 248, 244, 0.72f))
                         .toAttrs()
                 ) {
-                    Text(language.text("Search two players, confirm the names, then compare ratings, OBK records, expected win chances, and fair race spots.", "Søk opp to spillere, bekreft navnene, og sammenlign ratinger, OBK-statistikk, forventede vinnersjanser og rettferdige race-handicap."))
+                    Text(language.text("Search two players, compare expected win chances", "Søk opp to spillere og sammenlign forventede vinnersjanser."))
                 }
             }
             Row(
@@ -300,7 +364,7 @@ private fun MatchupPanel(
             }
         }
 
-        MatchupResult(firstPlayer, secondPlayer, language)
+        MatchupResult(firstPlayer, secondPlayer, playerPairs, language)
     }
 }
 
@@ -366,7 +430,7 @@ private fun PlayerPicker(
 }
 
 @Composable
-private fun MatchupResult(firstPlayer: FargoPlayer?, secondPlayer: FargoPlayer?, language: SiteLanguage) {
+private fun MatchupResult(firstPlayer: FargoPlayer?, secondPlayer: FargoPlayer?, playerPairs: List<PlayerPairStats>, language: SiteLanguage) {
     when {
         firstPlayer == null || secondPlayer == null -> {
             P(
@@ -405,29 +469,8 @@ private fun MatchupResult(firstPlayer: FargoPlayer?, secondPlayer: FargoPlayer?,
                     PlayerComparisonCard(firstPlayer, firstProbability)
                     PlayerComparisonCard(secondPlayer, secondProbability)
                 }
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .gap(0.7.cssRem)
-                        .styleModifier {
-                            property("display", "flex")
-                            property("flex-direction", "column")
-                        },
-                    verticalAlignment = Alignment.Top,
-                ) {
-                    RaceSuggestionCard(4, firstPlayer, secondPlayer, firstProbability, language)
-                    RaceSuggestionCard(5, firstPlayer, secondPlayer, firstProbability, language)
-                }
-                P(
-                    attrs = Modifier
-                        .margin(0.px)
-                        .fontSize(0.88.cssRem)
-                        .lineHeight(1.5)
-                        .color(Color.rgba(245, 248, 244, 0.6f))
-                        .toAttrs()
-                ) {
-                    Text(language.text("The head-to-head figures here are calculated from Fargo rating difference, not from direct head-to-head stats.", "Tallene her beregnes fra Fargo-ratingforskjellen, ikke direkte head-to-head kampstatistikk."))
-                }
+                RaceSuggestionsCard(firstPlayer, secondPlayer, firstProbability, language)
+                HeadToHeadCard(firstPlayer, secondPlayer, playerPairs, language)
             }
         }
     }
@@ -435,6 +478,8 @@ private fun MatchupResult(firstPlayer: FargoPlayer?, secondPlayer: FargoPlayer?,
 
 @Composable
 private fun PlayerComparisonCard(player: FargoPlayer, probability: Double) {
+    var expanded by remember(player.id) { mutableStateOf(false) }
+
     Column(
         Modifier
             .padding(0.85.cssRem)
@@ -444,25 +489,47 @@ private fun PlayerComparisonCard(player: FargoPlayer, probability: Double) {
             .gap(0.35.cssRem)
             .styleModifier { property("flex", "1 1 260px") }
     ) {
-        Span(
-            attrs = Modifier
-                .fontSize(1.05.cssRem)
-                .fontWeight(FontWeight.Bold)
-                .color(Colors.White)
-                .toAttrs()
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .gap(0.65.cssRem),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(player.name)
+            Span(
+                attrs = Modifier
+                    .fontSize(1.05.cssRem)
+                    .fontWeight(FontWeight.Bold)
+                    .color(Colors.White)
+                    .styleModifier {
+                        property("min-width", "0")
+                        property("flex", "1 1 auto")
+                        property("overflow-wrap", "anywhere")
+                    }
+                    .toAttrs()
+            ) {
+                Text(player.name)
+            }
+            ExpandButton(
+                expanded = expanded,
+                hasDetails = player.disciplineRatings.isNotEmpty(),
+                onToggle = { expanded = !expanded },
+                language = LocalSiteLanguage.current,
+            )
         }
         FargoStatLine("Fargo", formatRating(player.fargoRating), valueColor = fargoRobustnessColor(player.games))
         FargoStatLine(LocalSiteLanguage.current.text("Simple OBK", "Enkel OBK"), formatOptionalRating(player.latestHandicap))
         FargoStatLine(LocalSiteLanguage.current.text("OBK record", "OBK-statistikk"), "${player.wins}-${player.losses} (${player.games} ${LocalSiteLanguage.current.text("games", "partier")})")
         FargoStatLine(LocalSiteLanguage.current.text("Expected rack win", "Forventet partisjanse"), formatPercent(probability))
+        if (expanded) {
+            DisciplineRatingsPanel(player, LocalSiteLanguage.current)
+        }
     }
 }
 
 @Composable
-private fun RaceSuggestionCard(raceTo: Int, firstPlayer: FargoPlayer, secondPlayer: FargoPlayer, firstProbability: Double, language: SiteLanguage) {
-    val suggestion = raceSpotSuggestion(raceTo, firstPlayer, secondPlayer, firstProbability, language)
+private fun RaceSuggestionsCard(firstPlayer: FargoPlayer, secondPlayer: FargoPlayer, firstProbability: Double, language: SiteLanguage) {
+    val suggestions = listOf(3, 4, 5, 6).map { raceSuggestion(it, firstPlayer, secondPlayer, firstProbability) }
+
     Column(
         Modifier
             .padding(0.85.cssRem)
@@ -482,17 +549,146 @@ private fun RaceSuggestionCard(raceTo: Int, firstPlayer: FargoPlayer, secondPlay
                 .color(Color.rgb(239, 210, 133))
                 .toAttrs()
         ) {
-            Text(language.text("Race to $raceTo", "Race til $raceTo"))
+            Text(language.text("Race suggestions", "Race-forslag"))
+        }
+        Div(
+            attrs = Modifier
+                .fillMaxWidth()
+                .styleModifier {
+                    property("display", "grid")
+                    property("grid-template-columns", "repeat(auto-fit, minmax(160px, 1fr))")
+                    property("gap", "0.5rem")
+                }
+                .toAttrs()
+        ) {
+            suggestions.forEach { suggestion ->
+                RaceSuggestionTile(suggestion, language)
+            }
+        }
+        P(
+            attrs = Modifier
+                .margin(0.px)
+                .fontSize(0.82.cssRem)
+                .lineHeight(1.45)
+                .color(Color.rgba(245, 248, 244, 0.58f))
+                .toAttrs()
+        ) {
+            Text(language.text("Calculated from the overall Fargo rating difference only, testing all valid starting scores below the race target.", "Beregnet kun fra samlet Fargo-ratingforskjell, med alle gyldige startstillinger under race-målet testet."))
+        }
+    }
+}
+
+@Composable
+private fun RaceSuggestionTile(suggestion: RaceSuggestion, language: SiteLanguage) {
+    Column(
+        Modifier
+            .padding(leftRight = 0.68.cssRem, topBottom = 0.58.cssRem)
+            .borderRadius(12.px)
+            .backgroundColor(Color.rgba(0, 0, 0, 0.14f))
+            .border(1.px, LineStyle.Solid, Color.rgba(255, 255, 255, 0.08f))
+            .gap(0.25.cssRem)
+    ) {
+        Span(
+            attrs = Modifier
+                .fontSize(0.74.cssRem)
+                .fontWeight(FontWeight.Bold)
+                .color(Color.rgba(245, 248, 244, 0.58f))
+                .toAttrs()
+        ) {
+            Text(language.text("Race to ${suggestion.raceTo}", "Race til ${suggestion.raceTo}"))
+        }
+        Span(
+            attrs = Modifier
+                .fontSize(0.98.cssRem)
+                .fontWeight(FontWeight.Bold)
+                .lineHeight(1.25)
+                .color(Colors.White)
+                .toAttrs()
+        ) {
+            Text(suggestion.startText(language))
+        }
+        Span(
+            attrs = Modifier
+                .fontSize(0.78.cssRem)
+                .lineHeight(1.25)
+                .color(Color.rgba(245, 248, 244, 0.64f))
+                .toAttrs()
+        ) {
+            Text(language.text("${suggestion.favorite.name}: ${formatPercent(suggestion.favoriteWinProbability)}", "${suggestion.favorite.name}: ${formatPercent(suggestion.favoriteWinProbability)}"))
+        }
+    }
+}
+
+@Composable
+private fun HeadToHeadCard(firstPlayer: FargoPlayer, secondPlayer: FargoPlayer, playerPairs: List<PlayerPairStats>, language: SiteLanguage) {
+    val stats = matchupPairStats(firstPlayer, secondPlayer, playerPairs)
+
+    Column(
+        Modifier
+            .padding(0.85.cssRem)
+            .borderRadius(16.px)
+            .backgroundColor(Color.rgba(255, 255, 255, 0.07f))
+            .border(1.px, LineStyle.Solid, Color.rgba(255, 255, 255, 0.1f))
+            .gap(0.55.cssRem)
+            .styleModifier {
+                property("width", "100%")
+                property("box-sizing", "border-box")
+            }
+    ) {
+        Span(
+            attrs = Modifier
+                .fontSize(0.85.cssRem)
+                .fontWeight(FontWeight.Bold)
+                .color(Color.rgba(245, 248, 244, 0.78f))
+                .toAttrs()
+        ) {
+            Text(language.text("Head-to-head", "Innbyrdes oppgjør"))
+        }
+        Div(
+            attrs = Modifier
+                .fillMaxWidth()
+                .styleModifier {
+                    property("display", "grid")
+                    property("grid-template-columns", "repeat(auto-fit, minmax(170px, 1fr))")
+                    property("gap", "0.5rem")
+                }
+                .toAttrs()
+        ) {
+            matchupDisciplines().forEach { discipline ->
+                HeadToHeadTile(
+                    discipline = discipline,
+                    stats = stats[discipline.component],
+                    firstPlayer = firstPlayer,
+                    secondPlayer = secondPlayer,
+                    language = language,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun HeadToHeadTile(discipline: FargoDiscipline, stats: PlayerPairStats?, firstPlayer: FargoPlayer, secondPlayer: FargoPlayer, language: SiteLanguage) {
+    Column(
+        Modifier
+            .padding(leftRight = 0.68.cssRem, topBottom = 0.58.cssRem)
+            .borderRadius(12.px)
+            .backgroundColor(Color.rgba(0, 0, 0, 0.16f))
+            .border(1.px, LineStyle.Solid, Color.rgba(255, 255, 255, 0.08f))
+            .gap(0.28.cssRem)
+    ) {
+        Row(Modifier.gap(0.45.cssRem), verticalAlignment = Alignment.CenterVertically) {
+            DisciplineBadge(discipline)
         }
         Span(
             attrs = Modifier
                 .fontSize(1.02.cssRem)
-                .lineHeight(1.45)
-                .fontWeight(FontWeight.SemiBold)
+                .fontWeight(FontWeight.Bold)
+                .lineHeight(1.2)
                 .color(Colors.White)
                 .toAttrs()
         ) {
-            Text(suggestion)
+            Text(stats?.let { "${it.firstWins}-${it.secondWins}" } ?: "-")
         }
     }
 }
@@ -652,6 +848,8 @@ private fun PlayerListHeader() {
 
 @Composable
 private fun PlayerRow(index: Int, player: FargoPlayer, language: SiteLanguage) {
+    var expanded by remember(player.id) { mutableStateOf(false) }
+
     Div(
         attrs = Modifier
             .fillMaxWidth()
@@ -685,6 +883,12 @@ private fun PlayerRow(index: Int, player: FargoPlayer, language: SiteLanguage) {
                     Text("#$index")
                 }
                 PlayerIdentity(player)
+                ExpandButton(
+                    expanded = expanded,
+                    hasDetails = player.disciplineRatings.isNotEmpty(),
+                    onToggle = { expanded = !expanded },
+                    language = language,
+                )
             }
             Div(
                 attrs = Modifier
@@ -700,7 +904,138 @@ private fun PlayerRow(index: Int, player: FargoPlayer, language: SiteLanguage) {
                 PlayerMobileStat(language.text("Simple OBK", "Enkel OBK"), formatOptionalRating(player.latestHandicap))
                 PlayerMobileStat(language.text("Record", "Statistikk"), "${player.wins}-${player.losses}")
             }
+            if (expanded) {
+                DisciplineRatingsPanel(player, language)
+            }
         }
+    }
+}
+
+@Composable
+private fun ExpandButton(expanded: Boolean, hasDetails: Boolean, onToggle: () -> Unit, language: SiteLanguage) {
+    Button(
+        attrs = Modifier
+            .width(2.1.cssRem)
+            .padding(0.px)
+            .borderRadius(999.px)
+            .backgroundColor(if (hasDetails) Color.rgba(239, 190, 83, 0.16f) else Color.rgba(255, 255, 255, 0.08f))
+            .border(1.px, LineStyle.Solid, if (hasDetails) Color.rgba(239, 190, 83, 0.38f) else Color.rgba(255, 255, 255, 0.14f))
+            .color(if (hasDetails) Color.rgb(247, 219, 143) else Color.rgba(245, 248, 244, 0.66f))
+            .fontSize(1.cssRem)
+            .fontWeight(FontWeight.Bold)
+            .styleModifier {
+                property("height", "2.1rem")
+                property("cursor", "pointer")
+                property("line-height", "1")
+                property("flex", "0 0 auto")
+            }
+            .toAttrs {
+                attr("aria-expanded", expanded.toString())
+                attr("aria-label", language.text("Show discipline ratings", "Vis disiplinratinger"))
+                attr("title", language.text("Show discipline ratings", "Vis disiplinratinger"))
+                onClick { onToggle() }
+            }
+    ) {
+        Text(if (expanded) "⌄" else "›")
+    }
+}
+
+@Composable
+private fun DisciplineRatingsPanel(player: FargoPlayer, language: SiteLanguage) {
+    val ratingsByComponent = player.disciplineRatings.associateBy { it.component }
+
+    Div(
+        attrs = Modifier
+            .fillMaxWidth()
+            .padding(top = 0.4.cssRem)
+            .styleModifier {
+                property("display", "grid")
+                property("grid-template-columns", "repeat(auto-fit, minmax(150px, 1fr))")
+                property("gap", "0.5rem")
+            }
+            .toAttrs()
+    ) {
+        matchupDisciplines().forEach { discipline ->
+            val rating = if (discipline.component == OVERALL_COMPONENT) {
+                FargoDisciplineRating(
+                    component = OVERALL_COMPONENT,
+                    fargoRating = player.fargoRating,
+                    games = player.games,
+                    wins = player.wins,
+                    losses = player.losses,
+                )
+            } else {
+                ratingsByComponent[discipline.component]
+            }
+
+            Column(
+                Modifier
+                    .padding(leftRight = 0.68.cssRem, topBottom = 0.58.cssRem)
+                    .borderRadius(12.px)
+                    .backgroundColor(Color.rgba(0, 0, 0, 0.18f))
+                    .border(1.px, LineStyle.Solid, Color.rgba(255, 255, 255, 0.08f))
+                    .gap(0.28.cssRem)
+            ) {
+                Row(Modifier.gap(0.45.cssRem), verticalAlignment = Alignment.CenterVertically) {
+                    DisciplineBadge(discipline)
+                }
+                Span(
+                    attrs = Modifier
+                        .fontSize(1.cssRem)
+                        .fontWeight(FontWeight.Bold)
+                        .lineHeight(1.2)
+                        .color(rating?.fargoRating?.let { fargoRobustnessColor(rating.games) } ?: Color.rgba(245, 248, 244, 0.52f))
+                        .toAttrs()
+                ) {
+                    Text(formatOptionalRating(rating?.fargoRating))
+                }
+                Span(
+                    attrs = Modifier
+                        .fontSize(0.78.cssRem)
+                        .lineHeight(1.25)
+                        .color(Color.rgba(245, 248, 244, 0.66f))
+                        .toAttrs()
+                ) {
+                    Text(rating?.let { "${it.wins}-${it.losses} · ${it.games} ${language.text("games", "partier")}" } ?: language.text("No games", "Ingen partier"))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DisciplineBadge(discipline: FargoDiscipline) {
+    val ballNumber = discipline.component.toIntOrNull()
+    if (ballNumber != null && ballNumber in 8..10) {
+        PoolBall(
+            ballNumber = ballNumber,
+            modifier = Modifier
+                .width(1.85.cssRem)
+                .height(1.85.cssRem),
+        )
+        return
+    }
+
+    Span(
+        attrs = Modifier
+            .width(1.85.cssRem)
+            .borderRadius(999.px)
+            .backgroundColor(discipline.background)
+            .border(1.px, LineStyle.Solid, discipline.border)
+            .color(discipline.foreground)
+            .fontSize(0.72.cssRem)
+            .fontWeight(FontWeight.Bold)
+            .lineHeight(1.0)
+            .styleModifier {
+                property("height", "1.85rem")
+                property("display", "inline-flex")
+                property("align-items", "center")
+                property("justify-content", "center")
+                property("flex", "0 0 auto")
+            }
+            .toAttrs()
+    ) {
+        Text(discipline.badge)
     }
 }
 
@@ -989,30 +1324,158 @@ private fun parseFargoPlayers(csv: String): List<FargoPlayer> {
     if (lines.isEmpty()) return emptyList()
 
     val header = parseCsvLine(lines.first())
-    val columnIndex = header.withIndex().associate { it.value to it.index }
+    val columnIndex = header.withIndex().associate { it.value.cleanCsvHeader() to it.index }
 
     fun List<String>.value(column: String): String {
         val index = columnIndex[column] ?: return ""
         return getOrNull(index).orEmpty()
     }
 
+    fun List<String>.disciplineRating(component: String, suffix: String): FargoDisciplineRating? {
+        val wins = value("wins_$suffix").toIntOrNull() ?: 0
+        val losses = value("losses_$suffix").toIntOrNull() ?: 0
+        val rating = value("fargo_rating_$suffix").toDoubleOrNull()
+
+        return if (rating == null && wins + losses == 0) {
+            null
+        } else {
+            FargoDisciplineRating(
+                component = component,
+                fargoRating = rating,
+                games = wins + losses,
+                wins = wins,
+                losses = losses,
+            )
+        }
+    }
+
     return lines.asSequence()
         .drop(1)
         .mapNotNull { line ->
             val columns = parseCsvLine(line)
+            val fargoRating = columns.value("fargo_rating").toDoubleOrNull() ?: return@mapNotNull null
+            val wins = columns.value("wins").toIntOrNull() ?: 0
+            val losses = columns.value("losses").toIntOrNull() ?: 0
+
             FargoPlayer(
-                id = columns.value("player_id"),
-                name = columns.value("player_name"),
-                image = columns.value("image"),
-                countryImage = columns.value("countryImage"),
-                fargoRating = columns.value("fargo_rating").toDoubleOrNull() ?: return@mapNotNull null,
+                id = columns.value("player_id").trim(),
+                name = columns.value("player_name").trim(),
+                image = columns.value("image").trim(),
+                countryImage = columns.value("countryImage").trim(),
+                fargoRating = fargoRating,
                 latestHandicap = columns.value("latest_handicap").toDoubleOrNull(),
-                games = columns.value("games").toIntOrNull() ?: 0,
-                wins = columns.value("wins").toIntOrNull() ?: 0,
-                losses = columns.value("losses").toIntOrNull() ?: 0,
+                games = columns.value("games").toIntOrNull() ?: wins + losses,
+                wins = wins,
+                losses = losses,
+                disciplineRatings = listOfNotNull(
+                    columns.disciplineRating(EIGHT_BALL_COMPONENT, "8_ball"),
+                    columns.disciplineRating(NINE_BALL_COMPONENT, "9_ball"),
+                    columns.disciplineRating(TEN_BALL_COMPONENT, "10_ball"),
+                ),
             )
         }
         .toList()
+}
+
+private fun parsePlayerPairs(csv: String): List<PlayerPairStats> {
+    val lines = csv.lineSequence().filter { it.isNotBlank() }.toList()
+    if (lines.isEmpty()) return emptyList()
+
+    val header = parseCsvLine(lines.first())
+    val columnIndex = header.withIndex().associate { it.value.cleanCsvHeader() to it.index }
+
+    fun List<String>.value(column: String): String {
+        val index = columnIndex[column] ?: return ""
+        return getOrNull(index).orEmpty()
+    }
+
+    fun List<String>.valueAny(vararg columns: String): String {
+        return columns.firstNotNullOfOrNull { column -> value(column).takeIf { it.isNotBlank() } }.orEmpty()
+    }
+
+    fun List<String>.pairStats(
+        firstPlayerId: String,
+        secondPlayerId: String,
+        component: String,
+        winsSuffix: String,
+    ): PlayerPairStats? {
+        val firstWins = value("player1_wins$winsSuffix").toIntOrNull()
+        val secondWins = value("player2_wins$winsSuffix").toIntOrNull()
+        val games = value("games$winsSuffix").toIntOrNull()
+
+        return if (firstWins == null || secondWins == null || games == null || games == 0) {
+            null
+        } else {
+            PlayerPairStats(
+                firstPlayerId = firstPlayerId,
+                secondPlayerId = secondPlayerId,
+                component = component,
+                firstWins = firstWins,
+                secondWins = secondWins,
+                games = games,
+            )
+        }
+    }
+
+    return lines.asSequence()
+        .drop(1)
+        .flatMap { line ->
+            val columns = parseCsvLine(line)
+            val firstPlayerId = columns.valueAny("first_player_id", "player1_id", "player_1_id", "player_a_id", "player_id_1", "player_id_a", "p1_id", "player_id").trim()
+            val secondPlayerId = columns.valueAny("second_player_id", "player2_id", "player_2_id", "player_b_id", "player_id_2", "player_id_b", "p2_id", "opponent_id").trim()
+
+            if (firstPlayerId.isBlank() || secondPlayerId.isBlank()) {
+                return@flatMap emptyList<PlayerPairStats>().asSequence()
+            }
+
+            listOfNotNull(
+                columns.pairStats(firstPlayerId, secondPlayerId, OVERALL_COMPONENT, ""),
+                columns.pairStats(firstPlayerId, secondPlayerId, EIGHT_BALL_COMPONENT, "_8_ball"),
+                columns.pairStats(firstPlayerId, secondPlayerId, NINE_BALL_COMPONENT, "_9_ball"),
+                columns.pairStats(firstPlayerId, secondPlayerId, TEN_BALL_COMPONENT, "_10_ball"),
+            ).asSequence()
+        }
+        .toList()
+}
+
+private fun normalizeComponent(value: String): String {
+    val normalized = value.trim().lowercase()
+    return when (normalized) {
+        "", "1", "all", "overall", "total", "totalt" -> OVERALL_COMPONENT
+        "8", "8ball", "8-ball", "eight", "eight-ball" -> "8"
+        "9", "9ball", "9-ball", "nine", "nine-ball" -> "9"
+        "10", "10ball", "10-ball", "ten", "ten-ball" -> "10"
+        else -> value.trim()
+    }
+}
+
+private fun matchupPairStats(firstPlayer: FargoPlayer, secondPlayer: FargoPlayer, playerPairs: List<PlayerPairStats>): Map<String, PlayerPairStats> {
+    return playerPairs
+        .mapNotNull { pair ->
+            val component = normalizeComponent(pair.component)
+            when {
+                pair.firstPlayerId == firstPlayer.id && pair.secondPlayerId == secondPlayer.id -> pair.copy(component = component)
+                pair.firstPlayerId == secondPlayer.id && pair.secondPlayerId == firstPlayer.id -> PlayerPairStats(
+                    firstPlayerId = firstPlayer.id,
+                    secondPlayerId = secondPlayer.id,
+                    component = component,
+                    firstWins = pair.secondWins,
+                    secondWins = pair.firstWins,
+                    games = pair.games,
+                )
+                else -> null
+            }
+        }
+        .groupBy { it.component }
+        .mapValues { (_, stats) ->
+            stats.reduce { acc, stat ->
+                acc.copy(
+                    firstWins = acc.firstWins + stat.firstWins,
+                    secondWins = acc.secondWins + stat.secondWins,
+                    games = acc.games + stat.games,
+                )
+            }
+        }
 }
 
 private fun parseCsvLine(line: String): List<String> {
@@ -1040,14 +1503,61 @@ private fun parseCsvLine(line: String): List<String> {
     return values
 }
 
-private fun parseFargoHistoryYears(json: String): String {
-    val item = js("JSON.parse(json)")
-    return (item.history_years as? String).orEmpty().ifBlank { "?" }
+private fun String.cleanCsvHeader(): String = trim().removePrefix("\uFEFF")
+
+private fun parseFargoHistoryYearsFromCsv(csv: String): String {
+    val years = csv.lineSequence()
+        .drop(1)
+        .mapNotNull { line -> parseCsvLine(line).firstOrNull()?.trim()?.toIntOrNull() }
+        .toList()
+
+    val firstYear = years.minOrNull() ?: return "?"
+    val lastYear = years.maxOrNull() ?: return firstYear.toString()
+    return if (firstYear == lastYear) firstYear.toString() else "$firstYear-$lastYear"
 }
 
 private val robustFargoColor = Color.rgb(126, 218, 116)
 
 private val provisionalFargoColor = Color.rgb(255, 114, 114)
+
+private fun matchupDisciplines(): List<FargoDiscipline> = listOf(
+    FargoDiscipline(
+        component = OVERALL_COMPONENT,
+        badge = "All",
+        english = "Overall",
+        norwegian = "Totalt",
+        background = Color.rgba(245, 248, 244, 0.12f),
+        border = Color.rgba(245, 248, 244, 0.26f),
+        foreground = Color.rgba(245, 248, 244, 0.88f),
+    ),
+    FargoDiscipline(
+        component = "8",
+        badge = "8",
+        english = "8-ball",
+        norwegian = "8-ball",
+        background = Color.rgba(36, 36, 36, 0.92f),
+        border = Color.rgba(255, 255, 255, 0.24f),
+        foreground = Colors.White,
+    ),
+    FargoDiscipline(
+        component = "9",
+        badge = "9",
+        english = "9-ball",
+        norwegian = "9-ball",
+        background = Color.rgba(239, 190, 83, 0.24f),
+        border = Color.rgba(239, 190, 83, 0.48f),
+        foreground = Color.rgb(247, 219, 143),
+    ),
+    FargoDiscipline(
+        component = "10",
+        badge = "10",
+        english = "10-ball",
+        norwegian = "10-ball",
+        background = Color.rgba(78, 167, 255, 0.2f),
+        border = Color.rgba(78, 167, 255, 0.44f),
+        foreground = Color.rgb(164, 210, 255),
+    ),
+)
 
 private fun fargoRobustnessColor(games: Int): Color {
     return if (games >= ROBUST_FARGO_GAME_THRESHOLD) robustFargoColor else provisionalFargoColor
@@ -1057,26 +1567,40 @@ private fun fargoGameProbability(rating: Double, opponentRating: Double): Double
     return 1.0 / (1.0 + 2.0.pow((opponentRating - rating) / 100.0))
 }
 
-private fun raceSpotSuggestion(raceTo: Int, firstPlayer: FargoPlayer, secondPlayer: FargoPlayer, firstProbability: Double, language: SiteLanguage): String {
+private fun raceSuggestion(raceTo: Int, firstPlayer: FargoPlayer, secondPlayer: FargoPlayer, firstProbability: Double): RaceSuggestion {
     val favorite = if (firstProbability >= 0.5) firstPlayer else secondPlayer
     val underdog = if (favorite == firstPlayer) secondPlayer else firstPlayer
     val favoriteRackProbability = if (favorite == firstPlayer) firstProbability else 1.0 - firstProbability
-    val bestSpot = (0 until raceTo).minByOrNull { spot ->
-        abs(matchWinProbability(favoriteRackProbability, raceTo, raceTo - spot) - 0.5)
-    } ?: 0
 
-    val favoriteMatchProbability = matchWinProbability(favoriteRackProbability, raceTo, raceTo - bestSpot)
-    return if (bestSpot == 0) {
-        language.text(
-            "Even race. ${favorite.name} is about ${formatPercent(favoriteMatchProbability)} to win.",
-            "Jevnt race. ${favorite.name} har omtrent ${formatPercent(favoriteMatchProbability)} sjanse til å vinne.",
-        )
-    } else {
-        language.text(
-            "${underdog.name} starts ahead $bestSpot-0. ${favorite.name} is about ${formatPercent(favoriteMatchProbability)} to win.",
-            "${underdog.name} starter foran $bestSpot-0. ${favorite.name} har omtrent ${formatPercent(favoriteMatchProbability)} sjanse til å vinne.",
-        )
+    val starts = buildList {
+        add(0 to 0)
+        for (favoriteStart in 0 until raceTo) {
+            for (underdogStart in (favoriteStart + 1) until raceTo) {
+                add(favoriteStart to underdogStart)
+            }
+        }
     }
+    val bestStart = starts.minByOrNull { (favoriteStart, underdogStart) ->
+        val favoriteTarget = raceTo - favoriteStart
+        val underdogTarget = raceTo - underdogStart
+        abs(matchWinProbability(favoriteRackProbability, favoriteTarget, underdogTarget) - 0.5)
+    } ?: (0 to 0)
+
+    val favoriteStart = bestStart.first
+    val underdogStart = bestStart.second
+    val favoriteMatchProbability = matchWinProbability(
+        favoriteRackProbability,
+        raceTo - favoriteStart,
+        raceTo - underdogStart,
+    )
+    return RaceSuggestion(
+        raceTo = raceTo,
+        favorite = favorite,
+        underdog = underdog,
+        favoriteStart = favoriteStart,
+        underdogStart = underdogStart,
+        favoriteWinProbability = favoriteMatchProbability,
+    )
 }
 
 private fun matchWinProbability(rackProbability: Double, favoriteTarget: Int, underdogTarget: Int): Double {
