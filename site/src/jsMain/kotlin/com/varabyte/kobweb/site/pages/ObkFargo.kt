@@ -69,12 +69,12 @@ private data class FargoPlayer(
     val games: Int,
     val wins: Int,
     val losses: Int,
-    val disciplineRatings: List<FargoDisciplineRating>,
+    val disciplinePerformance: List<DisciplinePerformanceScore>,
 )
 
-private data class FargoDisciplineRating(
+private data class DisciplinePerformanceScore(
     val component: String,
-    val fargoRating: Double?,
+    val score: Double?,
     val games: Int,
     val wins: Int,
     val losses: Int,
@@ -511,7 +511,7 @@ private fun PlayerComparisonCard(player: FargoPlayer, probability: Double) {
             }
             ExpandButton(
                 expanded = expanded,
-                hasDetails = player.disciplineRatings.isNotEmpty(),
+                hasDetails = player.disciplinePerformance.isNotEmpty(),
                 onToggle = { expanded = !expanded },
                 language = LocalSiteLanguage.current,
             )
@@ -521,7 +521,7 @@ private fun PlayerComparisonCard(player: FargoPlayer, probability: Double) {
         FargoStatLine(LocalSiteLanguage.current.text("OBK record", "OBK-statistikk"), "${player.wins}-${player.losses} (${player.games} ${LocalSiteLanguage.current.text("games", "partier")})")
         FargoStatLine(LocalSiteLanguage.current.text("Expected rack win", "Forventet partisjanse"), formatPercent(probability))
         if (expanded) {
-            DisciplineRatingsPanel(player, LocalSiteLanguage.current)
+            DisciplinePerformancePanel(player, LocalSiteLanguage.current)
         }
     }
 }
@@ -791,10 +791,6 @@ private fun PlayerListPanel(
                 color = provisionalFargoColor,
                 text = language.text("Red Fargo: under 200 games, less robust", "Rød Fargo: under 200 partier, mindre robust"),
             )
-            RobustnessLegendChip(
-                color = Color.rgba(245, 248, 244, 0.56f),
-                text = language.text("Initial list hides players below 100 games; search still finds them", "Startlisten skjuler spillere under 100 partier; søk finner dem fortsatt"),
-            )
         }
 
         Column(Modifier.fillMaxWidth().gap(0.65.cssRem)) {
@@ -885,7 +881,7 @@ private fun PlayerRow(index: Int, player: FargoPlayer, language: SiteLanguage) {
                 PlayerIdentity(player)
                 ExpandButton(
                     expanded = expanded,
-                    hasDetails = player.disciplineRatings.isNotEmpty(),
+                    hasDetails = player.disciplinePerformance.isNotEmpty(),
                     onToggle = { expanded = !expanded },
                     language = language,
                 )
@@ -905,7 +901,7 @@ private fun PlayerRow(index: Int, player: FargoPlayer, language: SiteLanguage) {
                 PlayerMobileStat(language.text("Record", "Statistikk"), "${player.wins}-${player.losses}")
             }
             if (expanded) {
-                DisciplineRatingsPanel(player, language)
+                DisciplinePerformancePanel(player, language)
             }
         }
     }
@@ -931,8 +927,8 @@ private fun ExpandButton(expanded: Boolean, hasDetails: Boolean, onToggle: () ->
             }
             .toAttrs {
                 attr("aria-expanded", expanded.toString())
-                attr("aria-label", language.text("Show discipline ratings", "Vis disiplinratinger"))
-                attr("title", language.text("Show discipline ratings", "Vis disiplinratinger"))
+                attr("aria-label", language.text("Show performance scores", "Vis prestasjonsscorer"))
+                attr("title", language.text("Show performance scores", "Vis prestasjonsscorer"))
                 onClick { onToggle() }
             }
     ) {
@@ -941,65 +937,147 @@ private fun ExpandButton(expanded: Boolean, hasDetails: Boolean, onToggle: () ->
 }
 
 @Composable
-private fun DisciplineRatingsPanel(player: FargoPlayer, language: SiteLanguage) {
-    val ratingsByComponent = player.disciplineRatings.associateBy { it.component }
+private fun DisciplinePerformancePanel(player: FargoPlayer, language: SiteLanguage) {
+    var showInfo by remember(player.id) { mutableStateOf(false) }
+    val performanceByComponent = player.disciplinePerformance.associateBy { it.component }
+    val bestPerformance = player.disciplinePerformance
+        .filter { it.score != null }
+        .maxByOrNull { it.score ?: Double.NEGATIVE_INFINITY }
 
-    Div(
-        attrs = Modifier
+    Column(
+        Modifier
             .fillMaxWidth()
             .padding(top = 0.4.cssRem)
-            .styleModifier {
-                property("display", "grid")
-                property("grid-template-columns", "repeat(auto-fit, minmax(150px, 1fr))")
-                property("gap", "0.5rem")
-            }
-            .toAttrs()
+            .gap(0.55.cssRem)
     ) {
-        matchupDisciplines().forEach { discipline ->
-            val rating = if (discipline.component == OVERALL_COMPONENT) {
-                FargoDisciplineRating(
-                    component = OVERALL_COMPONENT,
-                    fargoRating = player.fargoRating,
-                    games = player.games,
-                    wins = player.wins,
-                    losses = player.losses,
-                )
-            } else {
-                ratingsByComponent[discipline.component]
-            }
-
-            Column(
-                Modifier
-                    .padding(leftRight = 0.68.cssRem, topBottom = 0.58.cssRem)
-                    .borderRadius(12.px)
-                    .backgroundColor(Color.rgba(0, 0, 0, 0.18f))
-                    .border(1.px, LineStyle.Solid, Color.rgba(255, 255, 255, 0.08f))
-                    .gap(0.28.cssRem)
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .gap(0.55.cssRem)
+                .flexWrap(FlexWrap.Wrap),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Span(
+                attrs = Modifier
+                    .fontSize(0.82.cssRem)
+                    .fontWeight(FontWeight.Bold)
+                    .color(Color.rgba(245, 248, 244, 0.68f))
+                    .toAttrs()
             ) {
-                Row(Modifier.gap(0.45.cssRem), verticalAlignment = Alignment.CenterVertically) {
-                    DisciplineBadge(discipline)
+                Text(language.text("Performance scores", "Prestasjonsscorer"))
+            }
+            PerformanceInfoButton(showInfo, language) { showInfo = !showInfo }
+        }
+        if (showInfo) {
+            P(
+                attrs = Modifier
+                    .margin(0.px)
+                    .padding(0.68.cssRem)
+                    .borderRadius(12.px)
+                    .backgroundColor(Color.rgba(255, 255, 255, 0.06f))
+                    .border(1.px, LineStyle.Solid, Color.rgba(255, 255, 255, 0.1f))
+                    .fontSize(0.82.cssRem)
+                    .lineHeight(1.45)
+                    .color(Color.rgba(245, 248, 244, 0.68f))
+                    .toAttrs()
+            ) {
+                Text(language.text(
+                    "A performance score compares discipline results with Fargo expectations. Positive is better than expected, negative is worse, and zero is in line with their overall level.",
+                    "En prestasjonsscore sammenligner disiplinresultater med Fargo-forventningene. Positivt er bedre enn forventet, negativt er svakere, og null er på linje med samlet nivå.",
+                ))
+            }
+        }
+        Div(
+            attrs = Modifier
+                .fillMaxWidth()
+                .styleModifier {
+                    property("display", "grid")
+                    property("grid-template-columns", "repeat(auto-fit, minmax(150px, 1fr))")
+                    property("gap", "0.5rem")
                 }
-                Span(
-                    attrs = Modifier
-                        .fontSize(1.cssRem)
-                        .fontWeight(FontWeight.Bold)
-                        .lineHeight(1.2)
-                        .color(rating?.fargoRating?.let { fargoRobustnessColor(rating.games) } ?: Color.rgba(245, 248, 244, 0.52f))
-                        .toAttrs()
+                .toAttrs()
+        ) {
+            performanceDisciplines().forEach { discipline ->
+                val performance = performanceByComponent[discipline.component]
+
+                Column(
+                    Modifier
+                        .padding(leftRight = 0.68.cssRem, topBottom = 0.58.cssRem)
+                        .borderRadius(12.px)
+                        .backgroundColor(Color.rgba(0, 0, 0, 0.18f))
+                        .border(1.px, LineStyle.Solid, Color.rgba(255, 255, 255, 0.08f))
+                        .gap(0.28.cssRem)
                 ) {
-                    Text(formatOptionalRating(rating?.fargoRating))
-                }
-                Span(
-                    attrs = Modifier
-                        .fontSize(0.78.cssRem)
-                        .lineHeight(1.25)
-                        .color(Color.rgba(245, 248, 244, 0.66f))
-                        .toAttrs()
-                ) {
-                    Text(rating?.let { "${it.wins}-${it.losses} · ${it.games} ${language.text("games", "partier")}" } ?: language.text("No games", "Ingen partier"))
+                    Row(Modifier.gap(0.45.cssRem), verticalAlignment = Alignment.CenterVertically) {
+                        DisciplineBadge(discipline)
+                        Span(
+                            attrs = Modifier
+                                .fontSize(0.74.cssRem)
+                                .fontWeight(FontWeight.Bold)
+                                .color(Color.rgba(245, 248, 244, 0.54f))
+                                .toAttrs()
+                        ) {
+                            Text(discipline.label(language))
+                        }
+                    }
+                    Span(
+                        attrs = Modifier
+                            .fontSize(1.cssRem)
+                            .fontWeight(FontWeight.Bold)
+                            .lineHeight(1.2)
+                            .color(performance?.score?.let { fargoRobustnessColor(performance.games) } ?: Color.rgba(245, 248, 244, 0.52f))
+                            .toAttrs()
+                    ) {
+                        Text(formatPerformanceScore(performance?.score))
+                    }
+                    Span(
+                        attrs = Modifier
+                            .fontSize(0.78.cssRem)
+                            .lineHeight(1.25)
+                            .color(Color.rgba(245, 248, 244, 0.66f))
+                            .toAttrs()
+                    ) {
+                        Text(performance?.let { "${it.wins}-${it.losses} · ${it.games} ${language.text("games", "partier")}" } ?: language.text("No games", "Ingen partier"))
+                    }
                 }
             }
         }
+        Span(
+            attrs = Modifier
+                .fontSize(0.84.cssRem)
+                .lineHeight(1.35)
+                .color(Color.rgba(245, 248, 244, 0.68f))
+                .toAttrs()
+        ) {
+            Text(bestPerformanceConclusion(bestPerformance, language))
+        }
+    }
+}
+
+@Composable
+private fun PerformanceInfoButton(active: Boolean, language: SiteLanguage, onClick: () -> Unit) {
+    Button(
+        attrs = Modifier
+            .width(1.6.cssRem)
+            .height(1.6.cssRem)
+            .padding(0.px)
+            .borderRadius(999.px)
+            .backgroundColor(if (active) Color.rgba(239, 190, 83, 0.16f) else Color.rgba(255, 255, 255, 0.08f))
+            .border(1.px, LineStyle.Solid, if (active) Color.rgba(239, 190, 83, 0.38f) else Color.rgba(255, 255, 255, 0.14f))
+            .color(if (active) Color.rgb(247, 219, 143) else Color.rgba(245, 248, 244, 0.72f))
+            .fontSize(0.82.cssRem)
+            .fontWeight(FontWeight.Bold)
+            .styleModifier {
+                property("cursor", "pointer")
+                property("line-height", "1")
+            }
+            .toAttrs {
+                attr("aria-label", language.text("Explain performance scores", "Forklar prestasjonsscorer"))
+                attr("title", language.text("Explain performance scores", "Forklar prestasjonsscorer"))
+                onClick { onClick() }
+            }
+    ) {
+        Text("i")
     }
 }
 
@@ -1331,18 +1409,19 @@ private fun parseFargoPlayers(csv: String): List<FargoPlayer> {
         return getOrNull(index).orEmpty()
     }
 
-    fun List<String>.disciplineRating(component: String, suffix: String): FargoDisciplineRating? {
+    fun List<String>.disciplinePerformance(component: String, suffix: String): DisciplinePerformanceScore? {
         val wins = value("wins_$suffix").toIntOrNull() ?: 0
         val losses = value("losses_$suffix").toIntOrNull() ?: 0
-        val rating = value("fargo_rating_$suffix").toDoubleOrNull()
+        val games = value("performance_games_$suffix").toIntOrNull() ?: wins + losses
+        val score = value("discipline_performance_$suffix").toDoubleOrNull()
 
-        return if (rating == null && wins + losses == 0) {
+        return if (score == null && games == 0) {
             null
         } else {
-            FargoDisciplineRating(
+            DisciplinePerformanceScore(
                 component = component,
-                fargoRating = rating,
-                games = wins + losses,
+                score = score,
+                games = games,
                 wins = wins,
                 losses = losses,
             )
@@ -1367,10 +1446,10 @@ private fun parseFargoPlayers(csv: String): List<FargoPlayer> {
                 games = columns.value("games").toIntOrNull() ?: wins + losses,
                 wins = wins,
                 losses = losses,
-                disciplineRatings = listOfNotNull(
-                    columns.disciplineRating(EIGHT_BALL_COMPONENT, "8_ball"),
-                    columns.disciplineRating(NINE_BALL_COMPONENT, "9_ball"),
-                    columns.disciplineRating(TEN_BALL_COMPONENT, "10_ball"),
+                disciplinePerformance = listOfNotNull(
+                    columns.disciplinePerformance(EIGHT_BALL_COMPONENT, "8_ball"),
+                    columns.disciplinePerformance(NINE_BALL_COMPONENT, "9_ball"),
+                    columns.disciplinePerformance(TEN_BALL_COMPONENT, "10_ball"),
                 ),
             )
         }
@@ -1520,6 +1599,10 @@ private val robustFargoColor = Color.rgb(126, 218, 116)
 
 private val provisionalFargoColor = Color.rgb(255, 114, 114)
 
+private fun performanceDisciplines(): List<FargoDiscipline> {
+    return matchupDisciplines().filter { it.component != OVERALL_COMPONENT }
+}
+
 private fun matchupDisciplines(): List<FargoDiscipline> = listOf(
     FargoDiscipline(
         component = OVERALL_COMPONENT,
@@ -1558,6 +1641,24 @@ private fun matchupDisciplines(): List<FargoDiscipline> = listOf(
         foreground = Color.rgb(164, 210, 255),
     ),
 )
+
+private fun bestPerformanceConclusion(bestPerformance: DisciplinePerformanceScore?, language: SiteLanguage): String {
+    val bestDiscipline = bestPerformance?.let { performance ->
+        performanceDisciplines().firstOrNull { it.component == performance.component }
+    }
+
+    return if (bestPerformance == null || bestDiscipline == null || bestPerformance.score == null) {
+        language.text(
+            "No discipline performance conclusion yet.",
+            "Ingen konklusjon for disiplinprestasjon ennå.",
+        )
+    } else {
+        language.text(
+            "Best discipline performance: ${bestDiscipline.label(language)} (${formatPerformanceScore(bestPerformance.score)}).",
+            "Beste disiplinprestasjon: ${bestDiscipline.label(language)} (${formatPerformanceScore(bestPerformance.score)}).",
+        )
+    }
+}
 
 private fun fargoRobustnessColor(games: Int): Color {
     return if (games >= ROBUST_FARGO_GAME_THRESHOLD) robustFargoColor else provisionalFargoColor
@@ -1626,6 +1727,13 @@ private fun combinations(n: Int, k: Int): Double {
 private fun formatRating(value: Double): String = value.toInt().toString()
 
 private fun formatOptionalRating(value: Double?): String = value?.toInt()?.toString() ?: "-"
+
+private fun formatPerformanceScore(value: Double?): String {
+    if (value == null) return "-"
+    val rounded = kotlin.math.round(value * 1000.0) / 1000.0
+    val sign = if (rounded > 0.0) "+" else ""
+    return "$sign$rounded"
+}
 
 private fun formatPercent(value: Double): String = "${(value * 1000.0).toInt() / 10.0}%"
 
