@@ -130,7 +130,7 @@ private const val OVERALL_COMPONENT = "1"
 private const val EIGHT_BALL_COMPONENT = "8"
 private const val NINE_BALL_COMPONENT = "9"
 private const val TEN_BALL_COMPONENT = "10"
-private const val OBK_GITHUB_RAW_BASE = "https://raw.githubusercontent.com/Flavelloni/Cue-Score/main/OBK"
+private const val OBK_GITHUB_RAW_BASE = "https://raw.githubusercontent.com/Flavelloni/Cue-Score/main/combined"
 private const val ROBUST_FARGO_GAME_THRESHOLD = 200
 private const val INITIAL_LIST_MIN_GAMES = 100
 
@@ -230,7 +230,7 @@ fun ObkFargoPage() {
                     .color(Color.rgba(245, 248, 244, 0.76f))
                     .toAttrs()
             ) {
-                Text(language.text("Ratings are calculated solely from Oslo Biljardklubb tournaments.", "Ratingene er beregnet kun fra Oslo Biljardklubb-turneringer."))
+                Text(language.text("Ratings are calculated solely from Oslo Biljardklubb and Cue tournaments.", "Ratingene er beregnet kun fra Oslo Biljardklubb- og Cue-turneringer."))
             }
         }
 
