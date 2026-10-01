@@ -17,6 +17,7 @@ import com.varabyte.kobweb.compose.ui.modifiers.*
 import com.varabyte.kobweb.compose.ui.styleModifier
 import com.varabyte.kobweb.compose.ui.toAttrs
 import com.varabyte.kobweb.navigation.Anchor
+import com.varabyte.kobweb.navigation.BasePath
 import com.varabyte.kobweb.silk.init.InitSilk
 import com.varabyte.kobweb.silk.init.InitSilkContext
 import com.varabyte.kobweb.silk.style.CssStyle
@@ -31,6 +32,7 @@ import com.varabyte.kobweb.silk.theme.colors.palette.toPalette
 import com.varabyte.kobweb.silk.theme.colors.shifted
 import com.varabyte.kobweb.site.components.style.dividerBoxShadow
 import com.varabyte.kobweb.site.components.widgets.EightBallToolIcon
+import com.varabyte.kobweb.site.components.widgets.LiveTournamentToolIcon
 import com.varabyte.kobweb.site.components.widgets.OverlapToolIcon
 import com.varabyte.kobweb.site.components.widgets.RatingToolIcon
 import com.varabyte.kobweb.site.model.LocalSiteLanguage
@@ -116,8 +118,11 @@ fun NavHeader() {
                     .fontSize(1.5.cssRem),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                HeaderToolLink("/obk-fargo", language.text("OBK Fargo rating", "OBK Fargo-rating")) {
+                HeaderToolLink("/obk-fargo", language.text("Performance Rating", "Performance Rating")) {
                     RatingToolIcon(30)
+                }
+                HeaderToolLink("/obk-live-tournament-probabilities", language.text("Live tournament probabilities", "Live turneringssjanser")) {
+                    LiveTournamentToolIcon(30)
                 }
                 HeaderToolLink("/8-ball-prediction", language.text("8 ball prediction", "8-ball prediksjon")) {
                     EightBallToolIcon(30)
@@ -134,7 +139,7 @@ fun NavHeader() {
 @Composable
 private fun HeaderToolLink(href: String, title: String, icon: @Composable () -> Unit) {
     Anchor(
-        href = href,
+        href = BasePath.prependTo(href),
         attrs = Modifier
             .padding(0.22.cssRem)
             .borderRadius(999.px)

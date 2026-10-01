@@ -149,3 +149,60 @@ fun OverlapToolIcon(sizePx: Int, modifier: Modifier = Modifier) {
         )
     }
 }
+
+@Composable
+fun LiveTournamentToolIcon(sizePx: Int, modifier: Modifier = Modifier) {
+    Div(
+        attrs = modifier
+            .size(sizePx.px)
+            .borderRadius(24.px)
+            .backgroundColor(Color.rgba(255, 116, 92, 0.15f))
+            .border(1.px, LineStyle.Solid, Color.rgba(255, 116, 92, 0.42f))
+            .position(Position.Relative)
+            .styleModifier {
+                property("box-shadow", "inset 0 1px 0 rgba(255,255,255,0.16)")
+            }
+            .toAttrs()
+    ) {
+        Div(
+            attrs = Modifier
+                .position(Position.Absolute)
+                .left(50.percent)
+                .top(36.percent)
+                .width((sizePx * 0.62).px)
+                .height((sizePx * 0.24).px)
+                .borderRadius(999.px)
+                .backgroundColor(Color.rgb(255, 116, 92))
+                .styleModifier { property("transform", "translate(-50%, -50%)") }
+                .toAttrs()
+        )
+        Div(
+            attrs = Modifier
+                .position(Position.Absolute)
+                .left(50.percent)
+                .top(62.percent)
+                .width((sizePx * 0.62).px)
+                .height((sizePx * 0.24).px)
+                .borderRadius(999.px)
+                .backgroundColor(Color.rgb(76, 211, 140))
+                .styleModifier { property("transform", "translate(-50%, -50%)") }
+                .toAttrs()
+        )
+        Span(
+            attrs = Modifier
+                .position(Position.Absolute)
+                .left(50.percent)
+                .top(50.percent)
+                .fontSize((sizePx * 0.22).px)
+                .fontWeight(FontWeight.Bold)
+                .color(Colors.White)
+                .styleModifier {
+                    property("transform", "translate(-50%, -50%)")
+                    property("line-height", "1")
+                }
+                .toAttrs()
+        ) {
+            Text("%")
+        }
+    }
+}

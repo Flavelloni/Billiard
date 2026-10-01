@@ -32,6 +32,7 @@ import com.varabyte.kobweb.core.layout.Layout
 import com.varabyte.kobweb.navigation.Anchor
 import com.varabyte.kobweb.site.components.layouts.PageLayoutData
 import com.varabyte.kobweb.site.components.widgets.EightBallToolIcon
+import com.varabyte.kobweb.site.components.widgets.LiveTournamentToolIcon
 import com.varabyte.kobweb.site.components.widgets.OverlapToolIcon
 import com.varabyte.kobweb.site.components.widgets.RatingToolIcon
 import com.varabyte.kobweb.site.model.LocalSiteLanguage
@@ -60,13 +61,22 @@ private data class HomeTool(
 
 private val homeTools = listOf(
     HomeTool(
-        titleEnglish = "OBK Fargo",
-        titleNorwegian = "OBK Fargo",
-        subtitleEnglish = "Ratings, player search, matchup odds, and race handicap suggestions.",
+        titleEnglish = "Performance Rating",
+        titleNorwegian = "Performance Rating",
+        subtitleEnglish = "Fargo-inspired ratings, player search, matchup odds, and race handicap suggestions.",
         subtitleNorwegian = "Ratinger, spillersøk, matchup-sjanser og forslag til handicap i race.",
         href = "/obk-fargo",
         accent = Color.rgb(239, 190, 83),
         icon = { size -> RatingToolIcon(size) },
+    ),
+    HomeTool(
+        titleEnglish = "Oslo BK Live",
+        titleNorwegian = "Oslo BK Live",
+        subtitleEnglish = "Live table pages with handicap-adjusted tournament probabilities.",
+        subtitleNorwegian = "Live bordvisning med handicappjusterte turneringssjanser.",
+        href = "/obk-live-tournament-probabilities",
+        accent = Color.rgb(255, 116, 92),
+        icon = { size -> LiveTournamentToolIcon(size) },
     ),
     HomeTool(
         titleEnglish = "8 Ball Prediction",
@@ -90,7 +100,7 @@ private val homeTools = listOf(
 
 @InitRoute
 fun initHomePage(ctx: InitRouteContext) {
-    ctx.data.add(PageLayoutData("Pool Buddy", "Pool tools for aiming practice, OBK Fargo ratings, and 8-ball shot prediction."))
+    ctx.data.add(PageLayoutData("Pool Buddy", "Pool tools for aiming practice, Performance Ratings, and 8-ball shot prediction."))
 }
 
 @Page
@@ -138,7 +148,7 @@ fun HomePage() {
                     .styleModifier { property("text-align", "center") }
                     .toAttrs()
             ) {
-                Text(language.text("Choose a tool for aiming practice, OBK Fargo ratings, or 8-ball shot prediction.", "Velg et verktøy for siktetrening, OBK Fargo-rating eller 8-ball prediksjon."))
+                Text(language.text("Choose a tool for aiming practice, Performance Ratings, or 8-ball shot prediction.", "Velg et verktøy for siktetrening, Performance Rating eller 8-ball prediksjon."))
             }
         }
 

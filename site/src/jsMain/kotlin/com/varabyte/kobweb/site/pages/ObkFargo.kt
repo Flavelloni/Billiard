@@ -136,7 +136,7 @@ private const val INITIAL_LIST_MIN_GAMES = 100
 
 @InitRoute
 fun initObkFargoPage(ctx: InitRouteContext) {
-    ctx.data.add(PageLayoutData("OBK Fargo Rating", "Oslo Biljardklubb Fargo-style ratings and matchup helper."))
+    ctx.data.add(PageLayoutData("Performance Rating", "Fargo-inspired ratings calculated from Oslo Biljardklubb and Cue tournaments."))
 }
 
 @Page("/obk-fargo")
@@ -162,7 +162,7 @@ fun ObkFargoPage() {
                 players = parseFargoPlayers(it)
                 loadError = null
             },
-            onError = { loadError = language.text("Could not load Fargo ratings: $it", "Kunne ikke laste Fargo-ratinger: $it") },
+            onError = { loadError = language.text("Could not load Performance Ratings: $it", "Kunne ikke laste Performance Rating: $it") },
         )
         fetchFargoText(
             "$OBK_GITHUB_RAW_BASE/tournament_stats_by_year.csv",
@@ -219,7 +219,7 @@ fun ObkFargoPage() {
                     .color(Colors.White)
                     .toAttrs()
             ) {
-                Text("OBK Fargo Rating")
+                Text("Performance Rating")
             }
             P(
                 attrs = Modifier
@@ -230,12 +230,12 @@ fun ObkFargoPage() {
                     .color(Color.rgba(245, 248, 244, 0.76f))
                     .toAttrs()
             ) {
-                Text(language.text("Ratings are calculated solely from Oslo Biljardklubb and Cue tournaments.", "Ratingene er beregnet kun fra Oslo Biljardklubb- og Cue-turneringer."))
+                Text(language.text("Performance Rating is Fargo-inspired and calculated from Oslo Biljardklubb and Cue tournaments.", "Performance Rating er Fargo-inspirert og beregnet fra Oslo Biljardklubb- og Cue-turneringer."))
             }
         }
 
         when {
-            loadError != null -> FargoMessage(loadError ?: language.text("Could not load Fargo ratings.", "Kunne ikke laste Fargo-ratinger."))
+            loadError != null -> FargoMessage(loadError ?: language.text("Could not load Performance Ratings.", "Kunne ikke laste Performance Rating."))
             players == null -> FargoMessage(language.text("Loading ratings...", "Laster ratinger..."))
             else -> {
                 MatchupPanel(
@@ -495,6 +495,13 @@ private fun PlayerComparisonCard(player: FargoPlayer, probability: Double) {
                 .gap(0.65.cssRem),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            PlayerImage(
+                src = player.image,
+                alt = player.name,
+                width = "2.45rem",
+                height = "2.45rem",
+                radius = "50%",
+            )
             Span(
                 attrs = Modifier
                     .fontSize(1.05.cssRem)
@@ -516,7 +523,7 @@ private fun PlayerComparisonCard(player: FargoPlayer, probability: Double) {
                 language = LocalSiteLanguage.current,
             )
         }
-        FargoStatLine("Fargo", formatRating(player.fargoRating), valueColor = fargoRobustnessColor(player.games))
+        FargoStatLine("Performance Rating", formatRating(player.fargoRating), valueColor = fargoRobustnessColor(player.games))
         FargoStatLine(LocalSiteLanguage.current.text("Simple OBK", "Enkel OBK"), formatOptionalRating(player.latestHandicap))
         FargoStatLine(LocalSiteLanguage.current.text("OBK record", "OBK-statistikk"), "${player.wins}-${player.losses} (${player.games} ${LocalSiteLanguage.current.text("games", "partier")})")
         FargoStatLine(LocalSiteLanguage.current.text("Expected rack win", "Forventet partisjanse"), formatPercent(probability))
@@ -573,7 +580,7 @@ private fun RaceSuggestionsCard(firstPlayer: FargoPlayer, secondPlayer: FargoPla
                 .color(Color.rgba(245, 248, 244, 0.58f))
                 .toAttrs()
         ) {
-            Text(language.text("Calculated from the overall Fargo rating difference only, testing all valid starting scores below the race target.", "Beregnet kun fra samlet Fargo-ratingforskjell, med alle gyldige startstillinger under race-målet testet."))
+            Text(language.text("Calculated from the overall Performance Rating difference only, testing all valid starting scores below the race target.", "Beregnet kun fra samlet Performance Rating-forskjell, med alle gyldige startstillinger under race-målet testet."))
         }
     }
 }
@@ -642,7 +649,7 @@ private fun HeadToHeadCard(firstPlayer: FargoPlayer, secondPlayer: FargoPlayer, 
                 .color(Color.rgba(245, 248, 244, 0.78f))
                 .toAttrs()
         ) {
-            Text(language.text("Head-to-head", "Innbyrdes oppgjør"))
+            Text(language.text("Head-to-head rack stats", "Innbyrdes partistatistikk"))
         }
         Div(
             attrs = Modifier
@@ -768,7 +775,7 @@ private fun PlayerListPanel(
                 ) {
                     Text(language.text("Sort by", "Sorter etter"))
                 }
-                SortButton(language.text("Fargo rating", "Fargo-rating"), sortMode == FargoSortMode.Fargo) { onSortMode(FargoSortMode.Fargo) }
+                SortButton(language.text("Performance Rating", "Performance Rating"), sortMode == FargoSortMode.Fargo) { onSortMode(FargoSortMode.Fargo) }
                 SortButton(language.text("Simple OBK rating", "Enkel OBK-rating"), sortMode == FargoSortMode.Obk) { onSortMode(FargoSortMode.Obk) }
                 Div(attrs = Modifier.width(230.px).toAttrs()) {
                     FargoInput(filter, language.text("Filter player", "Filtrer spiller"), onFilter)
@@ -785,11 +792,11 @@ private fun PlayerListPanel(
         ) {
             RobustnessLegendChip(
                 color = robustFargoColor,
-                text = language.text("Green Fargo: 200+ recorded games", "Grønn Fargo: 200+ registrerte partier"),
+                text = language.text("Green rating: 200+ recorded racks", "Grønn rating: 200+ registrerte partier"),
             )
             RobustnessLegendChip(
                 color = provisionalFargoColor,
-                text = language.text("Red Fargo: under 200 games, less robust", "Rød Fargo: under 200 partier, mindre robust"),
+                text = language.text("Red rating: under 200 racks, less robust", "Rød rating: under 200 partier, mindre robust"),
             )
         }
 
@@ -836,7 +843,7 @@ private fun PlayerListHeader() {
     ) {
         PlayerTableHeaderCell("#")
         PlayerTableHeaderCell(LocalSiteLanguage.current.text("Player", "Spiller"))
-        PlayerTableHeaderCell("Fargo")
+        PlayerTableHeaderCell("Performance Rating")
         PlayerTableHeaderCell(LocalSiteLanguage.current.text("Simple OBK", "Enkel OBK"))
         PlayerTableHeaderCell(LocalSiteLanguage.current.text("Record", "Statistikk"))
     }
@@ -896,7 +903,7 @@ private fun PlayerRow(index: Int, player: FargoPlayer, language: SiteLanguage) {
                     }
                     .toAttrs()
             ) {
-                PlayerMobileStat("Fargo", formatRating(player.fargoRating), valueColor = fargoRobustnessColor(player.games))
+                PlayerMobileStat("Performance Rating", formatRating(player.fargoRating), valueColor = fargoRobustnessColor(player.games))
                 PlayerMobileStat(language.text("Simple OBK", "Enkel OBK"), formatOptionalRating(player.latestHandicap))
                 PlayerMobileStat(language.text("Record", "Statistikk"), "${player.wins}-${player.losses}")
             }
@@ -982,8 +989,8 @@ private fun DisciplinePerformancePanel(player: FargoPlayer, language: SiteLangua
                     .toAttrs()
             ) {
                 Text(language.text(
-                    "A performance score compares discipline results with Fargo expectations. Positive is better than expected, negative is worse, and zero is in line with their overall level.",
-                    "En prestasjonsscore sammenligner disiplinresultater med Fargo-forventningene. Positivt er bedre enn forventet, negativt er svakere, og null er på linje med samlet nivå.",
+                    "A performance score compares discipline results with rating expectations. Positive is better than expected, negative is worse, and zero is in line with their overall level.",
+                    "En prestasjonsscore sammenligner disiplinresultater med ratingforventningene. Positivt er bedre enn forventet, negativt er svakere, og null er på linje med samlet nivå.",
                 ))
             }
         }
