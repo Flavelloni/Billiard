@@ -184,7 +184,7 @@ fun ObkLiveTournamentProbabilitiesPage() {
     }
 
     DisposableEffect(Unit) {
-        val timerId = window.setInterval({ refreshTournament() }, 60000)
+        val timerId = window.setInterval({ refreshTournament() }, 600000)
         onDispose { window.clearInterval(timerId) }
     }
 
@@ -234,7 +234,7 @@ fun ObkLiveTournamentProbabilitiesPage() {
                     .color(Color.rgba(245, 248, 244, 0.72f))
                     .toAttrs()
             ) {
-                Text("Updates when user refreshes manually and every 60 seconds while this page is open.")
+                Text("Updates when user refreshes manually.")
             }
         }
 
