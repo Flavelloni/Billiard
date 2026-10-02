@@ -338,6 +338,30 @@ private fun TablePage(
     LivePanel {
         TournamentHeader(tournament, updatedAt)
         Row(
+            Modifier.fillMaxWidth().gap(1.cssRem).flexWrap(FlexWrap.Wrap),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Span(
+                attrs = Modifier
+                    .fontSize(2.35.cssRem)
+                    .fontWeight(FontWeight.Bold)
+                    .lineHeight(1.0)
+                    .color(Color.rgb(255, 210, 132))
+                    .toAttrs()
+            ) {
+                Text("Table ${table.name}")
+            }
+            Span(
+                attrs = Modifier
+                    .fontSize(0.92.cssRem)
+                    .fontWeight(FontWeight.SemiBold)
+                    .color(Color.rgba(245, 248, 244, 0.62f))
+                    .toAttrs()
+            ) {
+                Text("${matchIndex + 1} / ${table.matches.size}")
+            }
+        }
+        Row(
             Modifier.fillMaxWidth().gap(0.75.cssRem).flexWrap(FlexWrap.Wrap),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -353,8 +377,6 @@ private fun TablePage(
             ) {
                 Text("All tables")
             }
-            LiveChip("Table ${table.name}")
-            //LiveChip("${matchIndex + 1} / ${table.matches.size}")
             LiveChip("Race to ${match.raceTo}")
             LiveChip(match.matchstatus.ifBlank { "unknown" })
             LiveRefreshButton(enabled = manualRefreshEnabled, onClick = onRefresh)
