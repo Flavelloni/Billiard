@@ -38,9 +38,8 @@ import com.varabyte.kobweb.core.init.InitRoute
 import com.varabyte.kobweb.core.init.InitRouteContext
 import com.varabyte.kobweb.core.layout.Layout
 import com.varabyte.kobweb.core.rememberPageContext
-import com.varabyte.kobweb.navigation.Anchor
-import com.varabyte.kobweb.navigation.BasePath
 import com.varabyte.kobweb.site.components.layouts.PageLayoutData
+import com.varabyte.kobweb.site.components.widgets.PoolBall
 import kotlinx.browser.window
 import org.jetbrains.compose.web.css.FlexWrap
 import org.jetbrains.compose.web.css.LineStyle
@@ -121,6 +120,11 @@ private data class LivePairStats(
     val games: Int,
 )
 
+private var cachedLiveTournament: LiveTournament? = null
+private var cachedLivePlayers: List<LiveFargoPlayer> = emptyList()
+private var cachedLivePairs: List<LivePairStats> = emptyList()
+private var cachedLiveUpdatedAt: String = ""
+
 @InitRoute
 fun initObkLiveTournamentProbabilitiesPage(ctx: InitRouteContext) {
     ctx.data.add(PageLayoutData("Oslo BK live tournament probabilities", "Live Oslo BK table pages with Performance Rating probabilities."))
@@ -130,43 +134,65 @@ fun initObkLiveTournamentProbabilitiesPage(ctx: InitRouteContext) {
 @Composable
 @Layout(".components.layouts.PageLayout")
 fun ObkLiveTournamentProbabilitiesPage() {
-    var tournament by remember { mutableStateOf<LiveTournament?>(null) }
-    var players by remember { mutableStateOf<List<LiveFargoPlayer>>(emptyList()) }
-    var pairs by remember { mutableStateOf<List<LivePairStats>>(emptyList()) }
+    var tournament by remember { mutableStateOf(cachedLiveTournament) }
+    var players by remember { mutableStateOf(cachedLivePlayers) }
+    var pairs by remember { mutableStateOf(cachedLivePairs) }
     var loadError by remember { mutableStateOf<String?>(null) }
-    var updatedAt by remember { mutableStateOf("") }
+    var updatedAt by remember { mutableStateOf(cachedLiveUpdatedAt) }
     var historyBack by remember { mutableStateOf(0) }
+    var manualRefreshEnabled by remember { mutableStateOf(true) }
     val ctx = rememberPageContext()
     val tableQuery = ctx.route.queryParams["table"]?.takeIf { it.isNotBlank() }
 
     fun refreshTournament() {
         loadLatestObkTournament(
             onLoaded = {
+                cachedLiveTournament = it
+                cachedLiveUpdatedAt = currentTimeText()
                 tournament = it
                 loadError = null
-                updatedAt = currentTimeText()
+                updatedAt = cachedLiveUpdatedAt
             },
             onError = { loadError = it },
         )
     }
 
     LaunchedEffect(Unit) {
-        refreshTournament()
-        fetchText(
-            "$OBK_GITHUB_RAW_BASE/player_fargo_ratings.csv",
-            onSuccess = { players = parseLiveFargoPlayers(it) },
-            onError = {},
-        )
-        fetchText(
-            "$OBK_GITHUB_RAW_BASE/player_pairs.csv",
-            onSuccess = { pairs = parseLivePairStats(it) },
-            onError = {},
-        )
+        if (cachedLiveTournament == null) {
+            refreshTournament()
+        }
+        if (cachedLivePlayers.isEmpty()) {
+            fetchText(
+                "$OBK_GITHUB_RAW_BASE/player_fargo_ratings.csv",
+                onSuccess = {
+                    cachedLivePlayers = parseLiveFargoPlayers(it)
+                    players = cachedLivePlayers
+                },
+                onError = {},
+            )
+        }
+        if (cachedLivePairs.isEmpty()) {
+            fetchText(
+                "$OBK_GITHUB_RAW_BASE/player_pairs.csv",
+                onSuccess = {
+                    cachedLivePairs = parseLivePairStats(it)
+                    pairs = cachedLivePairs
+                },
+                onError = {},
+            )
+        }
     }
 
     DisposableEffect(Unit) {
         val timerId = window.setInterval({ refreshTournament() }, 60000)
         onDispose { window.clearInterval(timerId) }
+    }
+
+    fun manualRefreshTournament() {
+        if (!manualRefreshEnabled) return
+        manualRefreshEnabled = false
+        refreshTournament()
+        window.setTimeout({ manualRefreshEnabled = true }, 15000)
     }
 
     val loadedTournament = tournament
@@ -208,13 +234,13 @@ fun ObkLiveTournamentProbabilitiesPage() {
                     .color(Color.rgba(245, 248, 244, 0.72f))
                     .toAttrs()
             ) {
-                Text("Updates when opened and every 60 seconds while this page is open.")
+                Text("Updates when user refreshes manually and every 60 seconds while this page is open.")
             }
         }
 
         when {
             loadError != null -> LiveMessage(loadError ?: "Could not load live tournament.")
-            loadedTournament == null -> LiveMessage("Loading latest Oslo BK tournament...")
+            loadedTournament == null -> LiveLoadingMessage()
             selectedTable != null -> TablePage(
                 tournament = loadedTournament,
                 table = selectedTable,
@@ -223,14 +249,29 @@ fun ObkLiveTournamentProbabilitiesPage() {
                 updatedAt = updatedAt,
                 historyBack = historyBack.coerceAtMost((selectedTable.matches.size - 1).coerceAtLeast(0)),
                 onHistoryBack = { historyBack = it.coerceIn(0, (selectedTable.matches.size - 1).coerceAtLeast(0)) },
+                manualRefreshEnabled = manualRefreshEnabled,
+                onRefresh = { manualRefreshTournament() },
+                onAllTables = { ctx.router.navigateTo("/obk-live-tournament-probabilities") },
             )
-            else -> TournamentOverview(loadedTournament, tables, updatedAt)
+            else -> TournamentOverview(
+                tournament = loadedTournament,
+                tables = tables,
+                updatedAt = updatedAt,
+                onTable = { tableName ->
+                    ctx.router.navigateTo("/obk-live-tournament-probabilities?table=${encodeURIComponent(tableName)}")
+                },
+            )
         }
     }
 }
 
 @Composable
-private fun TournamentOverview(tournament: LiveTournament, tables: List<LiveTable>, updatedAt: String) {
+private fun TournamentOverview(
+    tournament: LiveTournament,
+    tables: List<LiveTable>,
+    updatedAt: String,
+    onTable: (String) -> Unit,
+) {
     LivePanel {
         TournamentHeader(tournament, updatedAt)
         if (isTournamentOver(tournament)) {
@@ -246,8 +287,7 @@ private fun TournamentOverview(tournament: LiveTournament, tables: List<LiveTabl
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 tables.forEach { table ->
-                    Anchor(
-                        href = BasePath.prependTo("/obk-live-tournament-probabilities?table=${encodeURIComponent(table.name)}"),
+                    Button(
                         attrs = Modifier
                             .padding(leftRight = 0.95.cssRem, topBottom = 0.72.cssRem)
                             .borderRadius(14.px)
@@ -256,10 +296,10 @@ private fun TournamentOverview(tournament: LiveTournament, tables: List<LiveTabl
                             .color(Colors.White)
                             .fontWeight(FontWeight.Bold)
                             .styleModifier {
-                                property("text-decoration", "none")
                                 property("display", "inline-flex")
+                                property("cursor", "pointer")
                             }
-                            .toAttrs()
+                            .toAttrs { onClick { onTable(table.name) } }
                     ) {
                         Text("Table ${table.name}")
                     }
@@ -278,6 +318,9 @@ private fun TablePage(
     updatedAt: String,
     historyBack: Int,
     onHistoryBack: (Int) -> Unit,
+    manualRefreshEnabled: Boolean,
+    onRefresh: () -> Unit,
+    onAllTables: () -> Unit,
 ) {
     val matchIndex = (table.matches.lastIndex - historyBack).coerceIn(0, table.matches.lastIndex)
     val match = table.matches[matchIndex]
@@ -298,23 +341,23 @@ private fun TablePage(
             Modifier.fillMaxWidth().gap(0.75.cssRem).flexWrap(FlexWrap.Wrap),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Anchor(
-                href = BasePath.prependTo("/obk-live-tournament-probabilities"),
+            Button(
                 attrs = Modifier
                     .padding(leftRight = 0.8.cssRem, topBottom = 0.55.cssRem)
                     .borderRadius(999.px)
                     .backgroundColor(Color.rgba(255, 255, 255, 0.09f))
                     .border(1.px, LineStyle.Solid, Color.rgba(255, 255, 255, 0.14f))
                     .color(Colors.White)
-                    .styleModifier { property("text-decoration", "none") }
-                    .toAttrs()
+                    .styleModifier { property("cursor", "pointer") }
+                    .toAttrs { onClick { onAllTables() } }
             ) {
                 Text("All tables")
             }
             LiveChip("Table ${table.name}")
-            LiveChip("${matchIndex + 1} / ${table.matches.size}")
+            //LiveChip("${matchIndex + 1} / ${table.matches.size}")
             LiveChip("Race to ${match.raceTo}")
             LiveChip(match.matchstatus.ifBlank { "unknown" })
+            LiveRefreshButton(enabled = manualRefreshEnabled, onClick = onRefresh)
         }
 
         H2(
@@ -427,24 +470,24 @@ private fun CombinedMatchCard(
 
 @Composable
 private fun CombinedPlayerSide(player: LivePlayer, fargo: LiveFargoPlayer?, alignEnd: Boolean) {
-    Row(
+    Column(
         Modifier
-            .gap(0.55.cssRem)
+            .gap(0.45.cssRem)
             .styleModifier {
                 property("min-width", "0")
-                property("justify-content", if (alignEnd) "flex-end" else "flex-start")
+                property("justify-self", if (alignEnd) "end" else "start")
             },
-        verticalAlignment = Alignment.CenterVertically,
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        if (!alignEnd) PlayerImage(player)
+        PlayerImage(player)
         Column(
             Modifier
                 .gap(0.18.cssRem)
                 .styleModifier {
                     property("min-width", "0")
-                    property("text-align", if (alignEnd) "right" else "left")
+                    property("text-align", "center")
                 },
-            horizontalAlignment = if (alignEnd) Alignment.End else Alignment.Start,
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Span(
                 attrs = Modifier
@@ -466,7 +509,6 @@ private fun CombinedPlayerSide(player: LivePlayer, fargo: LiveFargoPlayer?, alig
                 Text("PR ${fargo?.rating?.toInt()?.toString() ?: "-"}")
             }
         }
-        if (alignEnd) PlayerImage(player)
     }
 }
 
@@ -728,6 +770,48 @@ private fun LiveMessage(message: String) {
 }
 
 @Composable
+private fun LiveLoadingMessage() {
+    var visibleBalls by remember { mutableStateOf(0) }
+
+    DisposableEffect(Unit) {
+        val timerId = window.setInterval({
+            visibleBalls = (visibleBalls + 1) % 6
+        }, 260)
+        onDispose { window.clearInterval(timerId) }
+    }
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .maxWidth(1180.px)
+            .gap(0.75.cssRem),
+        horizontalAlignment = Alignment.Start,
+    ) {
+        LiveMessage("Loading latest Oslo BK tournament...")
+        Row(
+            Modifier.gap(0.5.cssRem),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            (1..5).forEach { ball ->
+                Div(
+                    attrs = Modifier
+                        .width(34.px)
+                        .height(34.px)
+                        .styleModifier {
+                            property("opacity", if (ball <= visibleBalls) "1" else "0.18")
+                            property("transform", if (ball <= visibleBalls) "translateY(0)" else "translateY(5px)")
+                            property("transition", "opacity 180ms ease, transform 180ms ease")
+                        }
+                        .toAttrs()
+                ) {
+                    PoolBall(ballNumber = ball, fillParent = true)
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun LiveMutedText(message: String) {
     P(
         attrs = Modifier
@@ -786,6 +870,30 @@ private fun LiveNavButton(label: String, enabled: Boolean, onClick: () -> Unit) 
             }
     ) {
         Text(label)
+    }
+}
+
+@Composable
+private fun LiveRefreshButton(enabled: Boolean, onClick: () -> Unit) {
+    Button(
+        attrs = Modifier
+            .padding(leftRight = 1.15.cssRem, topBottom = 0.72.cssRem)
+            .borderRadius(999.px)
+            .backgroundColor(Color.rgba(255, 116, 92, 0.28f))
+            .border(1.px, LineStyle.Solid, Color.rgba(255, 116, 92, 0.62f))
+            .color(Colors.White)
+            .fontWeight(FontWeight.Bold)
+            .styleModifier {
+                property("cursor", "pointer")
+                property("box-shadow", "0 10px 28px rgba(255, 116, 92, 0.18)")
+            }
+            .toAttrs {
+                onClick {
+                    if (enabled) onClick()
+                }
+            }
+    ) {
+        Text("Refresh live data")
     }
 }
 
