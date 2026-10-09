@@ -45,6 +45,7 @@ import com.varabyte.kobweb.site.components.widgets.PoolBall
 import com.varabyte.kobweb.site.model.LocalSiteLanguage
 import com.varabyte.kobweb.site.model.SiteLanguage
 import com.varabyte.kobweb.site.model.text
+import kotlinx.browser.document
 import kotlinx.browser.window
 import org.jetbrains.compose.web.css.FlexWrap
 import org.jetbrains.compose.web.css.LineStyle
@@ -69,6 +70,7 @@ private const val EIGHT_BALL_WHEEL_THRESHOLD = 56.0
 private const val EIGHT_BALL_TOUCH_THRESHOLD = 64.0
 private const val EIGHT_BALL_DRAG_COMMIT_PERCENT = 18.0
 private const val EIGHT_BALL_SLIDE_DURATION_MS = 320
+private const val EIGHT_BALL_REEL_TOUCH_THRESHOLD = 64.0
 
 private data class EightBallEntry(
     val id: String,
@@ -322,6 +324,479 @@ fun EightBallPredictionPage() {
                         }
                     },
                 )
+            }
+        }
+    }
+}
+
+@Page("/8-ball-prediction-reels")
+@Composable
+fun EightBallPredictionReelsPage() {
+    val language = LocalSiteLanguage.current
+    var shots by remember { mutableStateOf<List<EightBallShot>?>(null) }
+    var loadError by remember { mutableStateOf<String?>(null) }
+    var shotIndex by remember { mutableStateOf(0) }
+    var selectedBall by remember { mutableStateOf<Int?>(null) }
+    var feedback by remember { mutableStateOf<String?>(null) }
+    var videoEnded by remember { mutableStateOf(false) }
+    var videoElement by remember { mutableStateOf<HTMLVideoElement?>(null) }
+    var touchStartY by remember { mutableStateOf<Double?>(null) }
+    var isAdvancing by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        ensureEightBallReelsStyles()
+        loadEightBallShots(
+            onLoaded = {
+                shots = it
+                loadError = null
+            },
+            onError = { loadError = it },
+        )
+    }
+
+    val loadedShots = shots
+    val currentShot = loadedShots?.getOrNull(shotIndex)
+
+    fun resetPrediction() {
+        videoElement?.let { video ->
+            video.pause()
+            video.currentTime = 0.0
+        }
+        selectedBall = null
+        feedback = null
+        videoEnded = false
+        touchStartY = null
+    }
+
+    fun advanceToNextShot() {
+        val shotCount = loadedShots?.size ?: return
+        if (shotCount == 0 || isAdvancing) return
+        isAdvancing = true
+        resetPrediction()
+        shotIndex = (shotIndex + 1) % shotCount
+        window.setTimeout({ isAdvancing = false }, EIGHT_BALL_SLIDE_DURATION_MS)
+    }
+
+    LaunchedEffect(shotIndex, selectedBall, videoElement) {
+        if (selectedBall != null) {
+            videoElement?.let { video ->
+                video.currentTime = 0.0
+                video.play()
+            }
+        }
+    }
+
+    EightBallReelsShell(
+        canAdvance = selectedBall != null && videoEnded,
+        onAdvance = { advanceToNextShot() },
+        onTouchStart = { y -> touchStartY = y },
+        onTouchEnd = { y ->
+            val startY = touchStartY
+            touchStartY = null
+            if (startY != null && y - startY >= EIGHT_BALL_REEL_TOUCH_THRESHOLD) {
+                advanceToNextShot()
+            }
+        },
+    ) {
+        when {
+            loadError != null -> EightBallReelMessage(loadError ?: "Could not load shots.")
+            loadedShots == null -> EightBallReelMessage("Loading...")
+            loadedShots.isEmpty() -> EightBallReelMessage("No shots.")
+            currentShot != null -> {
+                EightBallReelShot(
+                    shot = currentShot,
+                    selectedBall = selectedBall,
+                    feedback = feedback,
+                    videoEnded = videoEnded,
+                    onBallSelected = { ball ->
+                        selectedBall = ball
+                        videoEnded = false
+                        feedback = buildEightBallFeedback(ball == currentShot.meta.ball, currentShot.meta.ball, language)
+                        videoElement?.let { video ->
+                            video.currentTime = 0.0
+                            video.play()
+                        }
+                    },
+                    onVideoElement = { videoElement = it },
+                    onVideoEnded = { videoEnded = true },
+                    onVideoPlay = { videoEnded = false },
+                )
+            }
+        }
+    }
+}
+
+private fun ensureEightBallReelsStyles() {
+    if (document.getElementById("eight-ball-reels-styles") != null) return
+
+    val style = document.createElement("style")
+    style.setAttribute("id", "eight-ball-reels-styles")
+    style.textContent = """
+        @keyframes eightBallReelPulse {
+          0%, 100% { opacity: .34; transform: translateY(-5px); }
+          50% { opacity: 1; transform: translateY(5px); }
+        }
+    """.trimIndent()
+    document.head?.appendChild(style)
+}
+
+@Composable
+private fun EightBallReelsShell(
+    canAdvance: Boolean,
+    onAdvance: () -> Unit,
+    onTouchStart: (Double) -> Unit,
+    onTouchEnd: (Double) -> Unit,
+    content: @Composable () -> Unit,
+) {
+    Div(
+        attrs = Modifier
+            .position(Position.Relative)
+            .width(100.percent)
+            .height(100.percent)
+            .styleModifier {
+                property("min-height", "100dvh")
+                property("background", "radial-gradient(circle at 50% 18%, rgba(32,64,49,.32), transparent 36%), #050606")
+                property("display", "flex")
+                property("justify-content", "center")
+                property("overflow", "hidden")
+                property("touch-action", "none")
+            }
+            .toAttrs {
+                onWheel { event ->
+                    if (canAdvance && event.deltaY >= EIGHT_BALL_WHEEL_THRESHOLD) {
+                        event.preventDefault()
+                        onAdvance()
+                    }
+                }
+                onTouchStart { event ->
+                    val touch = event.touches.item(0) ?: return@onTouchStart
+                    onTouchStart(touch.clientY.toDouble())
+                }
+                onTouchEnd { event ->
+                    if (!canAdvance) return@onTouchEnd
+                    val touch = event.changedTouches.item(0) ?: return@onTouchEnd
+                    onTouchEnd(touch.clientY.toDouble())
+                }
+                onTouchCancel {
+                    onTouchStart(0.0)
+                }
+            }
+    ) {
+        Div(
+            attrs = Modifier
+                .position(Position.Relative)
+                .height(100.percent)
+                .styleModifier {
+                    property("width", "min(100vw, 460px)")
+                    property("min-height", "100dvh")
+                    property("background", "#020303")
+                    property("overflow", "hidden")
+                    property("box-shadow", "0 0 80px rgba(0,0,0,.58)")
+                }
+                .toAttrs()
+        ) {
+            content()
+        }
+    }
+}
+
+@Composable
+private fun EightBallReelShot(
+    shot: EightBallShot,
+    selectedBall: Int?,
+    feedback: String?,
+    videoEnded: Boolean,
+    onBallSelected: (Int) -> Unit,
+    onVideoElement: (HTMLVideoElement?) -> Unit,
+    onVideoEnded: () -> Unit,
+    onVideoPlay: () -> Unit,
+) {
+    val hasPrediction = selectedBall != null
+    val correct = selectedBall == shot.meta.ball
+
+    Div(
+        attrs = Modifier
+            .position(Position.Relative)
+            .width(100.percent)
+            .height(100.percent)
+            .styleModifier {
+                property("min-height", "100dvh")
+                property("-webkit-tap-highlight-color", "transparent")
+                property("-webkit-user-select", "none")
+                property("user-select", "none")
+            }
+            .toAttrs()
+    ) {
+        EightBallReelVideoLayer(
+            shot = shot,
+            correct = correct,
+            feedback = feedback,
+            showFeedback = hasPrediction,
+            showSwipeHint = hasPrediction && videoEnded,
+            onVideoElement = onVideoElement,
+            onVideoEnded = onVideoEnded,
+            onVideoPlay = onVideoPlay,
+        )
+
+        if (!hasPrediction) {
+            EightBallReelLayoutOverlay(
+                shot = shot,
+                onBallSelected = onBallSelected,
+            )
+        }
+    }
+}
+
+@Composable
+private fun EightBallReelMessage(message: String) {
+    Div(
+        attrs = Modifier
+            .width(100.percent)
+            .height(100.percent)
+            .styleModifier {
+                property("min-height", "100dvh")
+                property("display", "flex")
+                property("align-items", "center")
+                property("justify-content", "center")
+                property("color", "rgba(246,250,246,.72)")
+                property("font-size", ".95rem")
+            }
+            .toAttrs()
+    ) {
+        Text(message)
+    }
+}
+
+@Composable
+private fun EightBallReelVideoLayer(
+    shot: EightBallShot,
+    correct: Boolean,
+    feedback: String?,
+    showFeedback: Boolean,
+    showSwipeHint: Boolean,
+    onVideoElement: (HTMLVideoElement?) -> Unit,
+    onVideoEnded: () -> Unit,
+    onVideoPlay: () -> Unit,
+) {
+    Div(
+        attrs = Modifier
+            .position(Position.Absolute)
+            .width(100.percent)
+            .height(100.percent)
+            .styleModifier {
+                property("inset", "0")
+                property("display", "grid")
+                property("grid-template-rows", "108px minmax(0, 1fr) 108px")
+                property("background", "#020303")
+            }
+            .toAttrs()
+    ) {
+        Div(
+            attrs = Modifier
+                .styleModifier {
+                    property("display", "flex")
+                    property("flex-direction", "column")
+                    property("align-items", "center")
+                    property("justify-content", "end")
+                    property("gap", "4px")
+                    property("padding", "max(14px, env(safe-area-inset-top)) 18px 10px")
+                    property("opacity", if (showFeedback) "1" else "0")
+                }
+                .toAttrs()
+        ) {
+            Span(
+                attrs = Modifier
+                    .styleModifier {
+                        property("width", "46px")
+                        property("height", "46px")
+                        property("border-radius", "999px")
+                        property("display", "flex")
+                        property("align-items", "center")
+                        property("justify-content", "center")
+                        property("font-size", "1.45rem")
+                        property("background", if (correct) "rgba(31, 151, 78, .24)" else "rgba(203, 50, 50, .23)")
+                        property("border", if (correct) "1px solid rgba(102, 232, 151, .45)" else "1px solid rgba(255, 115, 115, .45)")
+                        property("color", if (correct) "#79e69c" else "#ff7373")
+                    }
+                    .toAttrs()
+            ) {
+                Text(if (correct) "\uD83D\uDC4D" else "\uD83D\uDC4E")
+            }
+            if (feedback != null) {
+                Span(
+                    attrs = Modifier
+                        .styleModifier {
+                            property("color", "rgba(245,248,245,.62)")
+                            property("font-size", ".78rem")
+                            property("font-weight", "600")
+                            property("text-align", "center")
+                            property("line-height", "1.25")
+                        }
+                        .toAttrs()
+                ) {
+                    Text(feedback)
+                }
+            }
+        }
+
+        Div(
+            attrs = Modifier
+                .styleModifier {
+                    property("display", "flex")
+                    property("align-items", "center")
+                    property("justify-content", "center")
+                    property("min-height", "0")
+                }
+                .toAttrs()
+        ) {
+            Video(
+                attrs = Modifier
+                    .fillMaxWidth()
+                    .styleModifier {
+                        property("height", "auto")
+                        property("max-height", "100%")
+                        property("object-fit", "contain")
+                        property("background", "#020303")
+                        property("outline", "none")
+                    }
+                    .toAttrs {
+                        attr("src", BasePath.prependTo(shot.entry.videoPath))
+                        attr("poster", BasePath.prependTo(shot.entry.imagePath))
+                        attr("playsinline", "")
+                        attr("disablepictureinpicture", "")
+                        attr("preload", "auto")
+                        attr("tabindex", "-1")
+                        ref { element ->
+                            onVideoElement(element)
+                            onDispose { onVideoElement(null) }
+                        }
+                        addEventListener("ended") { onVideoEnded() }
+                        addEventListener("play") { onVideoPlay() }
+                    }
+            )
+        }
+
+        Div(
+            attrs = Modifier
+                .styleModifier {
+                    property("display", "flex")
+                    property("align-items", "start")
+                    property("justify-content", "center")
+                    property("padding", "12px 18px max(18px, env(safe-area-inset-bottom))")
+                    property("opacity", if (showSwipeHint) "1" else "0")
+                    property("pointer-events", "none")
+                }
+                .toAttrs()
+        ) {
+            Span(
+                attrs = Modifier
+                    .styleModifier {
+                        property("font-size", "2.25rem")
+                        property("line-height", "1")
+                        property("color", "rgba(235, 247, 238, .78)")
+                        property("text-shadow", "0 8px 26px rgba(0,0,0,.62)")
+                        property("animation", "eightBallReelPulse 1.15s ease-in-out infinite")
+                    }
+                    .toAttrs()
+            ) {
+                Text("vv")
+            }
+        }
+    }
+}
+
+@Composable
+private fun EightBallReelLayoutOverlay(
+    shot: EightBallShot,
+    onBallSelected: (Int) -> Unit,
+) {
+    Div(
+        attrs = Modifier
+            .position(Position.Absolute)
+            .width(100.percent)
+            .height(100.percent)
+            .styleModifier {
+                property("inset", "0")
+                property("z-index", "2")
+                property("display", "grid")
+                property("grid-template-rows", "minmax(0, 1fr) auto")
+                property("background", "#020303")
+            }
+            .toAttrs()
+    ) {
+        Div(
+            attrs = Modifier
+                .position(Position.Relative)
+                .styleModifier {
+                    property("min-height", "0")
+                    property("display", "flex")
+                    property("align-items", "center")
+                    property("justify-content", "center")
+                    property("overflow", "hidden")
+                    property("padding", "8px 0 0")
+                }
+                .toAttrs()
+        ) {
+            Img(
+                src = BasePath.prependTo(shot.entry.imagePath),
+                attrs = Modifier
+                    .styleModifier {
+                        property("width", "min(calc(100dvh - 98px), 154vw)")
+                        property("height", "auto")
+                        property("max-width", "none")
+                        property("max-height", "none")
+                        property("transform", "rotate(90deg)")
+                        property("user-select", "none")
+                        property("-webkit-user-select", "none")
+                        property("-webkit-user-drag", "none")
+                    }
+                    .toAttrs {
+                        attr("alt", "Initial 8-ball layout")
+                        attr("draggable", "false")
+                    }
+            )
+        }
+
+        EightBallReelBallTray(onBallSelected = onBallSelected)
+    }
+}
+
+@Composable
+private fun EightBallReelBallTray(onBallSelected: (Int) -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(leftRight = 12.px)
+            .styleModifier {
+                property("box-sizing", "border-box")
+                property("padding-bottom", "max(10px, env(safe-area-inset-bottom))")
+                property("display", "flex")
+                property("flex-wrap", "wrap")
+                property("gap", "5px")
+                property("justify-content", "center")
+            },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        (1..15).forEach { ball ->
+            Button(
+                attrs = Modifier
+                    .width(32.px)
+                    .height(32.px)
+                    .padding(4.px)
+                    .borderRadius(999.px)
+                    .backgroundColor(Color.rgba(255, 255, 255, 0.08f))
+                    .border(1.px, LineStyle.Solid, Color.rgba(255, 255, 255, 0.18f))
+                    .styleModifier {
+                        property("box-sizing", "border-box")
+                        property("cursor", "pointer")
+                    }
+                    .toAttrs {
+                        title("${ballLabel(ball)} ball")
+                        attr("aria-label", "${ballLabel(ball)} ball")
+                        onClick { onBallSelected(ball) }
+                    }
+            ) {
+                PoolBall(ball, Modifier.width(100.percent).height(100.percent), fillParent = true)
             }
         }
     }
