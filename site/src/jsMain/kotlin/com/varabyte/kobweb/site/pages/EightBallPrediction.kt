@@ -520,7 +520,7 @@ private fun EightBallReelIntro(onStart: () -> Unit) {
             Text("Start")
         }
 */
-        EightBallReelSwipeHint()
+        EightBallReelSwipeHint("Swipe to start")
     }
 }
 
@@ -776,7 +776,7 @@ private fun EightBallReelVideoLayer(
                 }
                 .toAttrs()
         ) {
-            EightBallReelSwipeHint()
+            EightBallReelSwipeHint("Swipe next")
         }
     }
 }
@@ -897,7 +897,7 @@ private fun EightBallReelLayoutOverlay(
 }
 
 @Composable
-private fun EightBallReelSwipeHint() {
+private fun EightBallReelSwipeHint(text: String) {
     Div(
         attrs = Modifier
             .styleModifier {
@@ -936,7 +936,7 @@ private fun EightBallReelSwipeHint() {
                 }
                 .toAttrs()
         ) {
-            Text("Swipe to start")
+            Text(text)
         }
     }
 }
