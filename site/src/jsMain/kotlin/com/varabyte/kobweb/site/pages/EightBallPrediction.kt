@@ -40,6 +40,17 @@ import com.varabyte.kobweb.core.init.InitRoute
 import com.varabyte.kobweb.core.init.InitRouteContext
 import com.varabyte.kobweb.core.layout.Layout
 import com.varabyte.kobweb.navigation.BasePath
+import com.varabyte.kobweb.silk.components.icons.fa.FaAnglesUp
+import com.varabyte.kobweb.silk.components.icons.fa.FaCompress
+import com.varabyte.kobweb.silk.components.icons.fa.FaExpand
+import com.varabyte.kobweb.silk.components.icons.fa.FaHeart
+import com.varabyte.kobweb.silk.components.icons.fa.FaPause
+import com.varabyte.kobweb.silk.components.icons.fa.FaPlay
+import com.varabyte.kobweb.silk.components.icons.fa.FaRotateRight
+import com.varabyte.kobweb.silk.components.icons.fa.FaShare
+import com.varabyte.kobweb.silk.components.icons.fa.FaThumbsDown
+import com.varabyte.kobweb.silk.components.icons.fa.FaThumbsUp
+import com.varabyte.kobweb.silk.components.icons.fa.IconStyle
 import com.varabyte.kobweb.site.components.layouts.PageLayoutData
 import com.varabyte.kobweb.site.components.widgets.PoolBall
 import com.varabyte.kobweb.site.model.LocalSiteLanguage
@@ -71,6 +82,10 @@ private const val EIGHT_BALL_TOUCH_THRESHOLD = 64.0
 private const val EIGHT_BALL_DRAG_COMMIT_PERCENT = 18.0
 private const val EIGHT_BALL_SLIDE_DURATION_MS = 320
 private const val EIGHT_BALL_REEL_TOUCH_THRESHOLD = 64.0
+private const val EIGHT_BALL_REEL_VIDEO_SIDE_CROP_PERCENT = 22.0
+private const val EIGHT_BALL_REEL_VIDEO_ZOOM = 1.05
+private const val EIGHT_BALL_REEL_VIDEO_SOURCE_ASPECT = 16.0 / 9.0
+private const val EIGHT_BALL_REEL_VIDEO_AVAILABLE_HEIGHT_PX = 260.0
 
 private data class EightBallEntry(
     val id: String,
@@ -91,6 +106,23 @@ private data class EightBallShot(
     val entry: EightBallEntry,
     val meta: EightBallMeta,
 )
+
+private data class EightBallReelStats(
+    val answered: Int = 0,
+    val correct: Int = 0,
+    val streak: Int = 0,
+    val bestStreak: Int = 0,
+) {
+    fun next(wasCorrect: Boolean): EightBallReelStats {
+        val nextStreak = if (wasCorrect) streak + 1 else 0
+        return copy(
+            answered = answered + 1,
+            correct = correct + if (wasCorrect) 1 else 0,
+            streak = nextStreak,
+            bestStreak = maxOf(bestStreak, nextStreak),
+        )
+    }
+}
 
 private val positiveEightBallFeedback = listOf(
     "That's it!",
@@ -332,24 +364,34 @@ fun EightBallPredictionPage() {
 @Page("/8-ball-prediction-reels")
 @Composable
 fun EightBallPredictionReelsPage() {
-    val language = LocalSiteLanguage.current
+    val initialShotId = remember { currentEightBallReelsShotId() }
     var shots by remember { mutableStateOf<List<EightBallShot>?>(null) }
     var loadError by remember { mutableStateOf<String?>(null) }
     var shotIndex by remember { mutableStateOf(0) }
     var selectedBall by remember { mutableStateOf<Int?>(null) }
     var feedback by remember { mutableStateOf<String?>(null) }
     var videoEnded by remember { mutableStateOf(false) }
+    var videoPaused by remember { mutableStateOf(false) }
     var videoElement by remember { mutableStateOf<HTMLVideoElement?>(null) }
     var touchStartY by remember { mutableStateOf<Double?>(null) }
     var isAdvancing by remember { mutableStateOf(false) }
     var showIntro by remember { mutableStateOf(true) }
     var imageFullscreen by remember { mutableStateOf(false) }
+    var likedShotIds by remember { mutableStateOf(emptySet<String>()) }
+    var shareShot by remember { mutableStateOf<EightBallShot?>(null) }
+    var shareCopied by remember { mutableStateOf(false) }
+    var stats by remember { mutableStateOf(EightBallReelStats()) }
 
     LaunchedEffect(Unit) {
         ensureEightBallReelsStyles()
         loadEightBallShots(
             onLoaded = {
                 shots = it
+                val requestedIndex = it.indexOfFirst { shot -> shot.entry.id == initialShotId }
+                if (requestedIndex >= 0) {
+                    shotIndex = requestedIndex
+                    showIntro = false
+                }
                 loadError = null
             },
             onError = { loadError = it },
@@ -359,6 +401,12 @@ fun EightBallPredictionReelsPage() {
     val loadedShots = shots
     val currentShot = loadedShots?.getOrNull(shotIndex)
 
+    LaunchedEffect(showIntro, shotIndex, loadedShots) {
+        if (loadedShots == null) return@LaunchedEffect
+        val shot = if (showIntro) null else loadedShots?.getOrNull(shotIndex)
+        updateEightBallReelsUrl(shot?.entry?.id)
+    }
+
     fun resetPrediction() {
         videoElement?.let { video ->
             video.pause()
@@ -367,6 +415,7 @@ fun EightBallPredictionReelsPage() {
         selectedBall = null
         feedback = null
         videoEnded = false
+        videoPaused = false
         touchStartY = null
     }
 
@@ -395,8 +444,25 @@ fun EightBallPredictionReelsPage() {
         if (selectedBall != null) {
             videoElement?.let { video ->
                 video.currentTime = 0.0
+                videoPaused = false
                 video.play()
             }
+        }
+    }
+
+    fun toggleVideoPlayback() {
+        val video = videoElement ?: return
+        if (videoEnded) {
+            video.currentTime = 0.0
+            videoEnded = false
+            videoPaused = false
+            video.play()
+        } else if (video.paused) {
+            videoPaused = false
+            video.play()
+        } else {
+            videoPaused = true
+            video.pause()
         }
     }
 
@@ -427,19 +493,49 @@ fun EightBallPredictionReelsPage() {
                     selectedBall = selectedBall,
                     feedback = feedback,
                     videoEnded = videoEnded,
+                    videoPaused = videoPaused,
+                    stats = stats,
+                    liked = currentShot.entry.id in likedShotIds,
+                    likesLabel = eightBallReelLikeLabel(currentShot.entry.id),
                     onImageFullscreen = { imageFullscreen = true },
+                    onLike = {
+                        likedShotIds = if (currentShot.entry.id in likedShotIds) {
+                            likedShotIds - currentShot.entry.id
+                        } else {
+                            likedShotIds + currentShot.entry.id
+                        }
+                    },
+                    onShare = {
+                        if (!shareEightBallShotNative(currentShot)) {
+                            shareShot = currentShot
+                            shareCopied = false
+                        }
+                    },
                     onBallSelected = { ball ->
+                        val correct = ball == currentShot.meta.ball
                         selectedBall = ball
                         videoEnded = false
-                        feedback = buildEightBallFeedback(ball == currentShot.meta.ball, currentShot.meta.ball, language)
+                        videoPaused = false
+                        feedback = buildEightBallReelFeedback(correct)
+                        stats = stats.next(correct)
                         videoElement?.let { video ->
                             video.currentTime = 0.0
                             video.play()
                         }
                     },
                     onVideoElement = { videoElement = it },
-                    onVideoEnded = { videoEnded = true },
-                    onVideoPlay = { videoEnded = false },
+                    onVideoEnded = {
+                        videoEnded = true
+                        videoPaused = false
+                    },
+                    onVideoPlay = {
+                        videoEnded = false
+                        videoPaused = false
+                    },
+                    onVideoPause = {
+                        if (!videoEnded) videoPaused = true
+                    },
+                    onVideoToggle = { toggleVideoPlayback() },
                 )
 
                 if (imageFullscreen) {
@@ -449,6 +545,21 @@ fun EightBallPredictionReelsPage() {
                     )
                 }
             }
+        }
+
+        shareShot?.let { shot ->
+            EightBallShareSheet(
+                shot = shot,
+                copied = shareCopied,
+                onCopy = {
+                    copyEightBallShareUrl(shot)
+                    shareCopied = true
+                },
+                onClose = {
+                    shareShot = null
+                    shareCopied = false
+                },
+            )
         }
     }
 }
@@ -469,36 +580,58 @@ private fun ensureEightBallReelsStyles() {
 
 @Composable
 private fun EightBallReelIntro(onStart: () -> Unit) {
-    Div(
-        attrs = Modifier
+    Column(
+        Modifier
             .width(100.percent)
             .height(100.percent)
             .styleModifier {
                 property("min-height", "100dvh")
-                property("display", "flex")
-                property("flex-direction", "column")
-                property("align-items", "center")
                 property("justify-content", "center")
                 property("gap", "26px")
                 property("padding", "34px")
                 property("box-sizing", "border-box")
                 property("color", "rgba(246,250,246,.9)")
                 property("text-align", "center")
-            }
-            .toAttrs()
+            },
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        H1(
+            attrs = Modifier
+                .margin(0.px)
+                .fontSize(2.05.cssRem)
+                .lineHeight(1.05)
+                .fontWeight(FontWeight.Bold)
+                .color(Colors.White)
+                .toAttrs()
+        ) {
+            Text("8-Ball Buddy")
+        }
         P(
             attrs = Modifier
                 .margin(0.px)
                 .styleModifier {
                     property("max-width", "320px")
-                    property("font-size", "1.06rem")
-                    property("font-weight", "650")
-                    property("line-height", "1.42")
+                    property("font-size", "1.16rem")
+                    property("font-weight", "750")
+                    property("line-height", "1.32")
                 }
                 .toAttrs()
         ) {
-            Text("Try to predict which ball the player potted in the next shot. Click one of the balls below the layout to lock in your guess.")
+            Text("Can you predict the pro's next move?")
+        }
+        P(
+            attrs = Modifier
+                .margin(0.px)
+                .styleModifier {
+                    property("max-width", "320px")
+                    property("font-size", ".92rem")
+                    property("font-weight", "600")
+                    property("line-height", "1.42")
+                    property("color", "rgba(246,250,246,.68)")
+                }
+                .toAttrs()
+        ) {
+            Text("Read the layout, pick the ball, then watch the shot reveal.")
         }
 /*
         Button(
@@ -592,11 +725,19 @@ private fun EightBallReelShot(
     selectedBall: Int?,
     feedback: String?,
     videoEnded: Boolean,
+    videoPaused: Boolean,
+    stats: EightBallReelStats,
+    liked: Boolean,
+    likesLabel: String,
     onImageFullscreen: () -> Unit,
+    onLike: () -> Unit,
+    onShare: () -> Unit,
     onBallSelected: (Int) -> Unit,
     onVideoElement: (HTMLVideoElement?) -> Unit,
     onVideoEnded: () -> Unit,
     onVideoPlay: () -> Unit,
+    onVideoPause: () -> Unit,
+    onVideoToggle: () -> Unit,
 ) {
     val hasPrediction = selectedBall != null
     val correct = selectedBall == shot.meta.ball
@@ -617,12 +758,16 @@ private fun EightBallReelShot(
         EightBallReelVideoLayer(
             shot = shot,
             correct = correct,
+            selectedBall = selectedBall,
             feedback = feedback,
             showFeedback = hasPrediction,
             showSwipeHint = hasPrediction && videoEnded,
+            videoPaused = videoPaused,
             onVideoElement = onVideoElement,
             onVideoEnded = onVideoEnded,
             onVideoPlay = onVideoPlay,
+            onVideoPause = onVideoPause,
+            onVideoToggle = onVideoToggle,
         )
 
         if (!hasPrediction) {
@@ -632,24 +777,30 @@ private fun EightBallReelShot(
                 onBallSelected = onBallSelected,
             )
         }
+
+        EightBallReelActions(
+            stats = stats,
+            liked = liked,
+            likesLabel = likesLabel,
+            onLike = onLike,
+            onShare = onShare,
+        )
     }
 }
 
 @Composable
 private fun EightBallReelMessage(message: String) {
-    Div(
-        attrs = Modifier
+    Column(
+        Modifier
             .width(100.percent)
             .height(100.percent)
             .styleModifier {
                 property("min-height", "100dvh")
-                property("display", "flex")
-                property("align-items", "center")
                 property("justify-content", "center")
                 property("color", "rgba(246,250,246,.72)")
                 property("font-size", ".95rem")
-            }
-            .toAttrs()
+            },
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(message)
     }
@@ -659,12 +810,16 @@ private fun EightBallReelMessage(message: String) {
 private fun EightBallReelVideoLayer(
     shot: EightBallShot,
     correct: Boolean,
+    selectedBall: Int?,
     feedback: String?,
     showFeedback: Boolean,
     showSwipeHint: Boolean,
+    videoPaused: Boolean,
     onVideoElement: (HTMLVideoElement?) -> Unit,
     onVideoEnded: () -> Unit,
     onVideoPlay: () -> Unit,
+    onVideoPause: () -> Unit,
+    onVideoToggle: () -> Unit,
 ) {
     Div(
         attrs = Modifier
@@ -708,7 +863,24 @@ private fun EightBallReelVideoLayer(
                     }
                     .toAttrs()
             ) {
-                Text(if (correct) "\uD83D\uDC4D" else "\uD83D\uDC4E")
+                if (correct) {
+                    FaThumbsUp()
+                } else {
+                    FaThumbsDown()
+                }
+            }
+            Span(
+                attrs = Modifier
+                    .styleModifier {
+                        property("color", if (correct) "rgba(126,218,116,.92)" else "rgba(255,195,101,.92)")
+                        property("font-size", ".88rem")
+                        property("font-weight", "750")
+                        property("text-align", "center")
+                        property("line-height", "1.25")
+                    }
+                    .toAttrs()
+            ) {
+                Text(eightBallReelResultText(selectedBall, shot.meta.ball))
             }
             if (feedback != null) {
                 Span(
@@ -734,34 +906,56 @@ private fun EightBallReelVideoLayer(
                     property("align-items", "center")
                     property("justify-content", "center")
                     property("min-height", "0")
+                    property("overflow", "hidden")
                 }
                 .toAttrs()
         ) {
-            Video(
+            Div(
                 attrs = Modifier
-                    .fillMaxWidth()
+                    .position(Position.Relative)
                     .styleModifier {
-                        property("height", "auto")
-                        property("max-height", "100%")
-                        property("object-fit", "contain")
+                        property("width", eightBallReelVideoFrameWidth())
+                        property("aspect-ratio", eightBallReelVideoFrameAspect().toString())
+                        property("overflow", "hidden")
                         property("background", "#020303")
-                        property("outline", "none")
                     }
-                    .toAttrs {
-                        attr("src", BasePath.prependTo(shot.entry.videoPath))
-                        attr("poster", BasePath.prependTo(shot.entry.imagePath))
-                        attr("playsinline", "")
-                        attr("disablepictureinpicture", "")
-                        attr("preload", "auto")
-                        attr("tabindex", "-1")
-                        ref { element ->
-                            onVideoElement(element)
-                            onDispose { onVideoElement(null) }
+                    .toAttrs()
+            ) {
+                Video(
+                    attrs = Modifier
+                        .styleModifier {
+                            property("width", "100%")
+                            property("height", "100%")
+                            property("max-width", "none")
+                            property("max-height", "none")
+                            property("object-fit", "cover")
+                            property("transform", "scale($EIGHT_BALL_REEL_VIDEO_ZOOM)")
+                            property("transform-origin", "center center")
+                            property("background", "#020303")
+                            property("outline", "none")
                         }
-                        addEventListener("ended") { onVideoEnded() }
-                        addEventListener("play") { onVideoPlay() }
-                    }
-            )
+                        .toAttrs {
+                            attr("src", BasePath.prependTo(shot.entry.videoPath))
+                            attr("poster", BasePath.prependTo(shot.entry.imagePath))
+                            attr("playsinline", "")
+                            attr("disablepictureinpicture", "")
+                            attr("preload", "auto")
+                            attr("tabindex", "-1")
+                            ref { element ->
+                                onVideoElement(element)
+                                onDispose { onVideoElement(null) }
+                            }
+                            addEventListener("ended") { onVideoEnded() }
+                            addEventListener("play") { onVideoPlay() }
+                            addEventListener("pause") { onVideoPause() }
+                        }
+                )
+                EightBallReelVideoControl(
+                    videoEnded = showSwipeHint,
+                    videoPaused = videoPaused,
+                    onClick = onVideoToggle,
+                )
+            }
         }
 
         Div(
@@ -778,6 +972,309 @@ private fun EightBallReelVideoLayer(
         ) {
             EightBallReelSwipeHint("Swipe next")
         }
+    }
+}
+
+@Composable
+private fun EightBallReelVideoControl(
+    videoEnded: Boolean,
+    videoPaused: Boolean,
+    onClick: () -> Unit,
+) {
+    val label = when {
+        videoEnded -> "Replay shot"
+        videoPaused -> "Play shot"
+        else -> "Pause shot"
+    }
+
+    Button(
+        attrs = Modifier
+            .position(Position.Absolute)
+            .zIndex(3)
+            .styleModifier {
+                property("left", "12px")
+                property("bottom", "12px")
+                property("width", "42px")
+                property("height", "42px")
+                property("padding", "0")
+                property("border", "1px solid rgba(255,255,255,.18)")
+                property("border-radius", "999px")
+                property("background", "rgba(0,0,0,.48)")
+                property("color", "white")
+                property("font-size", "1rem")
+                property("cursor", "pointer")
+                property("display", "flex")
+                property("align-items", "center")
+                property("justify-content", "center")
+                property("backdrop-filter", "blur(8px)")
+            }
+            .toAttrs {
+                attr("aria-label", label)
+                title(label)
+                onClick { onClick() }
+            }
+    ) {
+        when {
+            videoEnded -> FaRotateRight()
+            videoPaused -> FaPlay()
+            else -> FaPause()
+        }
+    }
+}
+
+@Composable
+private fun EightBallReelActions(
+    stats: EightBallReelStats,
+    liked: Boolean,
+    likesLabel: String,
+    onLike: () -> Unit,
+    onShare: () -> Unit,
+) {
+    Column(
+        Modifier
+            .position(Position.Absolute)
+            .zIndex(5)
+            .styleModifier {
+                property("right", "12px")
+                property("top", "50%")
+                property("transform", "translateY(-50%)")
+                property("gap", "18px")
+                property("align-items", "center")
+                property("pointer-events", "auto")
+            },
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        EightBallReelStatsBadge(stats)
+        EightBallReelActionButton(
+            label = likesLabel,
+            color = if (liked) "#ff405f" else "rgba(255,255,255,.94)",
+            ariaLabel = "Like shot",
+            onClick = onLike,
+        ) {
+            FaHeart(style = if (liked) IconStyle.FILLED else IconStyle.OUTLINE)
+        }
+        EightBallReelActionButton(
+            label = "Share",
+            color = "rgba(255,255,255,.94)",
+            ariaLabel = "Share shot",
+            onClick = onShare,
+        ) {
+            FaShare()
+        }
+    }
+}
+
+@Composable
+private fun EightBallReelStatsBadge(stats: EightBallReelStats) {
+    Column(
+        Modifier
+            .padding(leftRight = 0.55.cssRem, topBottom = 0.42.cssRem)
+            .borderRadius(10.px)
+            .backgroundColor(Color.rgba(0, 0, 0, 0.42f))
+            .border(1.px, LineStyle.Solid, Color.rgba(255, 255, 255, 0.14f))
+            .styleModifier {
+                property("min-width", "58px")
+                property("box-shadow", "0 12px 28px rgba(0,0,0,.32)")
+                property("backdrop-filter", "blur(8px)")
+            },
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Span(
+            attrs = Modifier
+                .fontSize(0.72.cssRem)
+                .fontWeight(FontWeight.Bold)
+                .lineHeight(1.15)
+                .color(Color.rgba(255, 255, 255, 0.9f))
+                .toAttrs()
+        ) {
+            Text("${stats.correct}/${stats.answered}")
+        }
+        Span(
+            attrs = Modifier
+                .fontSize(0.62.cssRem)
+                .lineHeight(1.15)
+                .color(Color.rgba(255, 255, 255, 0.62f))
+                .toAttrs()
+        ) {
+            Text("Streak ${stats.streak}")
+        }
+        if (stats.bestStreak > 1) {
+            Span(
+                attrs = Modifier
+                    .fontSize(0.62.cssRem)
+                    .lineHeight(1.15)
+                    .color(Color.rgba(126, 218, 116, 0.82f))
+                    .toAttrs()
+            ) {
+                Text("Best ${stats.bestStreak}")
+            }
+        }
+    }
+}
+
+@Composable
+private fun EightBallReelActionButton(
+    label: String,
+    color: String,
+    ariaLabel: String,
+    onClick: () -> Unit,
+    icon: @Composable () -> Unit,
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Button(
+            attrs = Modifier
+                .styleModifier {
+                    property("width", "48px")
+                    property("height", "48px")
+                    property("padding", "0")
+                    property("border", "1px solid rgba(255,255,255,.18)")
+                    property("border-radius", "999px")
+                    property("background", "rgba(0,0,0,.38)")
+                    property("color", color)
+                    property("font-size", "1.72rem")
+                    property("line-height", "1")
+                    property("cursor", "pointer")
+                    property("display", "flex")
+                    property("align-items", "center")
+                    property("justify-content", "center")
+                    property("text-shadow", "0 8px 18px rgba(0,0,0,.74)")
+                    property("backdrop-filter", "blur(8px)")
+                }
+                .toAttrs {
+                    attr("aria-label", ariaLabel)
+                    title(ariaLabel)
+                    onClick { onClick() }
+                }
+        ) {
+            icon()
+        }
+        Span(
+            attrs = Modifier
+                .styleModifier {
+                    property("margin-top", "5px")
+                    property("color", "rgba(255,255,255,.9)")
+                    property("font-size", ".72rem")
+                    property("font-weight", "750")
+                    property("line-height", "1")
+                    property("text-shadow", "0 6px 14px rgba(0,0,0,.72)")
+                }
+                .toAttrs()
+        ) {
+            Text(label)
+        }
+    }
+}
+
+@Composable
+private fun EightBallShareSheet(
+    shot: EightBallShot,
+    copied: Boolean,
+    onCopy: () -> Unit,
+    onClose: () -> Unit,
+) {
+    val shareUrl = eightBallReelsShareUrl(shot)
+    Div(
+        attrs = Modifier
+            .position(Position.Fixed)
+            .zIndex(10001)
+            .styleModifier {
+                property("inset", "0")
+                property("display", "flex")
+                property("align-items", "end")
+                property("justify-content", "center")
+                property("background", "rgba(0,0,0,.58)")
+                property("padding", "20px")
+                property("box-sizing", "border-box")
+            }
+            .toAttrs {
+                onClick { onClose() }
+            }
+    ) {
+        Div(
+            attrs = Modifier
+                .width(100.percent)
+                .styleModifier {
+                    property("max-width", "420px")
+                    property("border-radius", "22px")
+                    property("background", "#101414")
+                    property("border", "1px solid rgba(255,255,255,.12)")
+                    property("box-shadow", "0 28px 90px rgba(0,0,0,.56)")
+                    property("padding", "18px")
+                    property("box-sizing", "border-box")
+                }
+                .toAttrs {
+                    onClick { it.stopPropagation() }
+                }
+        ) {
+            P(
+                attrs = Modifier
+                    .margin(0.px)
+                    .styleModifier {
+                        property("color", "rgba(255,255,255,.92)")
+                        property("font-size", ".98rem")
+                        property("font-weight", "750")
+                        property("line-height", "1.3")
+                    }
+                    .toAttrs()
+            ) {
+                Text(eightBallReelTitle(shot.meta))
+            }
+            P(
+                attrs = Modifier
+                    .margin(top = 0.38.cssRem, bottom = 1.cssRem)
+                    .styleModifier {
+                        property("color", "rgba(255,255,255,.58)")
+                        property("font-size", ".78rem")
+                        property("line-height", "1.35")
+                        property("overflow-wrap", "anywhere")
+                    }
+                    .toAttrs()
+            ) {
+                Text(shareUrl)
+            }
+
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .gap(0.6.cssRem)
+                    .flexWrap(FlexWrap.Wrap),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                EightBallShareButton("WhatsApp") {
+                    openEightBallWhatsAppShare(shot)
+                }
+                EightBallShareButton("Email") {
+                    openEightBallEmailShare(shot)
+                }
+                EightBallShareButton(if (copied) "Copied" else "Copy") {
+                    onCopy()
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EightBallShareButton(label: String, onClick: () -> Unit) {
+    Button(
+        attrs = Modifier
+            .styleModifier {
+                property("flex", "1 1 104px")
+                property("min-height", "42px")
+                property("border", "1px solid rgba(255,255,255,.14)")
+                property("border-radius", "999px")
+                property("background", "rgba(255,255,255,.08)")
+                property("color", "white")
+                property("font-weight", "750")
+                property("cursor", "pointer")
+            }
+            .toAttrs {
+                onClick { onClick() }
+            }
+    ) {
+        Text(label)
     }
 }
 
@@ -856,7 +1353,7 @@ private fun EightBallReelLayoutOverlay(
                         onClick { onImageFullscreen() }
                     }
             ) {
-                Text("\u26F6")
+                FaExpand()
             }
         }
 
@@ -872,27 +1369,44 @@ private fun EightBallReelLayoutOverlay(
                 }
                 .toAttrs()
         ) {
-            Img(
-                src = BasePath.prependTo(shot.entry.imagePath),
+            Div(
                 attrs = Modifier
+                    .position(Position.Relative)
                     .styleModifier {
-                        property("width", "min(calc(100dvh - 156px), 154vw)")
-                        property("height", "auto")
-                        property("max-width", "none")
-                        property("max-height", "none")
-                        property("transform", "rotate(90deg)")
-                        property("user-select", "none")
-                        property("-webkit-user-select", "none")
-                        property("-webkit-user-drag", "none")
+                        property("width", "min(calc(100% - 28px), 38dvh, 460px)")
+                        property("aspect-ratio", "9 / 16")
+                        property("overflow", "hidden")
+                        property("display", "flex")
+                        property("align-items", "center")
+                        property("justify-content", "center")
                     }
-                    .toAttrs {
-                        attr("alt", "Initial 8-ball layout")
-                        attr("draggable", "false")
-                    }
-            )
+                    .toAttrs()
+            ) {
+                Img(
+                    src = BasePath.prependTo(shot.entry.imagePath),
+                    attrs = Modifier
+                        .styleModifier {
+                            property("width", "177.777%")
+                            property("height", "auto")
+                            property("max-width", "none")
+                            property("max-height", "none")
+                            property("transform", "rotate(90deg)")
+                            property("user-select", "none")
+                            property("-webkit-user-select", "none")
+                            property("-webkit-user-drag", "none")
+                        }
+                        .toAttrs {
+                            attr("alt", "Initial 8-ball layout")
+                            attr("draggable", "false")
+                        }
+                )
+            }
         }
 
-        EightBallReelBallTray(onBallSelected = onBallSelected)
+        EightBallReelBallTray(
+            balls = eightBallReelPickerBalls(shot),
+            onBallSelected = onBallSelected,
+        )
     }
 }
 
@@ -912,18 +1426,15 @@ private fun EightBallReelSwipeHint(text: String) {
             }
             .toAttrs()
     ) {
-        Span(
-            attrs = Modifier
+        FaAnglesUp(
+            Modifier
                 .styleModifier {
                     property("font-size", "1.9rem")
                     property("line-height", "1")
                     property("color", "rgba(235,247,238,.88)")
-                    property("text-shadow", "0 8px 18px rgba(0,0,0,.68)")
+                    property("filter", "drop-shadow(0 8px 18px rgba(0,0,0,.68))")
                 }
-                .toAttrs()
-        ) {
-            Text("↑")
-        }
+        )
         Span(
             attrs = Modifier
                 .styleModifier {
@@ -978,41 +1489,58 @@ private fun EightBallReelChevron() {
 */
 
 @Composable
-private fun EightBallReelBallTray(onBallSelected: (Int) -> Unit) {
-    Row(
+private fun EightBallReelBallTray(balls: List<Int>, onBallSelected: (Int) -> Unit) {
+    Column(
         Modifier
             .fillMaxWidth()
             .padding(leftRight = 12.px)
+            .gap(0.45.cssRem)
             .styleModifier {
                 property("box-sizing", "border-box")
                 property("padding-bottom", "max(10px, env(safe-area-inset-bottom))")
-                property("display", "flex")
-                property("flex-wrap", "wrap")
-                property("gap", "5px")
-                property("justify-content", "center")
             },
-        verticalAlignment = Alignment.CenterVertically,
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        (1..15).forEach { ball ->
-            Button(
-                attrs = Modifier
-                    .width(32.px)
-                    .height(32.px)
-                    .padding(4.px)
-                    .borderRadius(999.px)
-                    .backgroundColor(Color.rgba(255, 255, 255, 0.08f))
-                    .border(1.px, LineStyle.Solid, Color.rgba(255, 255, 255, 0.18f))
-                    .styleModifier {
-                        property("box-sizing", "border-box")
-                        property("cursor", "pointer")
-                    }
-                    .toAttrs {
-                        title("${ballLabel(ball)} ball")
-                        attr("aria-label", "${ballLabel(ball)} ball")
-                        onClick { onBallSelected(ball) }
-                    }
-            ) {
-                PoolBall(ball, Modifier.width(100.percent).height(100.percent), fillParent = true)
+        Span(
+            attrs = Modifier
+                .fontSize(0.72.cssRem)
+                .fontWeight(FontWeight.Bold)
+                .lineHeight(1)
+                .color(Color.rgba(235, 247, 238, 0.72f))
+                .styleModifier { property("text-transform", "uppercase") }
+                .toAttrs()
+        ) {
+            Text("Pick the ball the pro pots next")
+        }
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .gap(0.46.cssRem)
+                .flexWrap(FlexWrap.Wrap)
+                .styleModifier { property("justify-content", "center") },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            balls.forEach { ball ->
+                Button(
+                    attrs = Modifier
+                        .width(44.px)
+                        .height(44.px)
+                        .padding(5.px)
+                        .borderRadius(999.px)
+                        .backgroundColor(Color.rgba(255, 255, 255, 0.08f))
+                        .border(1.px, LineStyle.Solid, Color.rgba(255, 255, 255, 0.18f))
+                        .styleModifier {
+                            property("box-sizing", "border-box")
+                            property("cursor", "pointer")
+                        }
+                        .toAttrs {
+                            title("${ballLabel(ball)} ball")
+                            attr("aria-label", "${ballLabel(ball)} ball")
+                            onClick { onBallSelected(ball) }
+                        }
+                ) {
+                    PoolBall(ball, Modifier.width(100.percent).height(100.percent), fillParent = true)
+                }
             }
         }
     }
@@ -1354,7 +1882,7 @@ private fun EightBallCarouselPanel(
                         }
                     }
             ) {
-                Text("⛶")
+                FaExpand()
             }
         }
     }
@@ -1562,7 +2090,7 @@ private fun EightBallFullscreenImage(
             src = BasePath.prependTo(shot.entry.imagePath),
             attrs = Modifier
                 .styleModifier {
-                    property("width", "100dvh")
+                    property("width", "min(100dvh, 177.777vw)")
                     property("height", "auto")
                     property("max-width", "none")
                     property("max-height", "none")
@@ -1598,10 +2126,11 @@ private fun EightBallFullscreenImage(
                 }
                 .toAttrs {
                     attr("aria-label", "Close fullscreen image")
+                    title("Close fullscreen image")
                     onClick { onClose() }
                 }
         ) {
-            Text("×")
+            FaCompress()
         }
     }
 }
@@ -1616,6 +2145,56 @@ private fun buildEightBallFeedback(correct: Boolean, actualBall: Int, language: 
         "$lead It was the ${ballLabel(actualBall)} ball.",
         "Riktig ball var ${ballLabel(actualBall)}.",
     )
+}
+
+private fun buildEightBallReelFeedback(correct: Boolean): String {
+    return if (correct) {
+        positiveEightBallFeedback[Random.nextInt(positiveEightBallFeedback.size)]
+    } else {
+        negativeEightBallFeedback[Random.nextInt(negativeEightBallFeedback.size)]
+    }
+}
+
+private fun eightBallReelVideoFrameAspect(): Double {
+    val visibleWidth = 1.0 - EIGHT_BALL_REEL_VIDEO_SIDE_CROP_PERCENT / 50.0
+    return EIGHT_BALL_REEL_VIDEO_SOURCE_ASPECT * EIGHT_BALL_REEL_VIDEO_ZOOM * visibleWidth
+}
+
+private fun eightBallReelVideoFrameWidth(): String {
+    val aspect = eightBallReelVideoFrameAspect()
+    val heightLimitedDvh = aspect * 100.0
+    val heightLimitedPx = aspect * EIGHT_BALL_REEL_VIDEO_AVAILABLE_HEIGHT_PX
+    return "min(calc(100% - 28px), calc(${heightLimitedDvh}dvh - ${heightLimitedPx}px), 460px)"
+}
+
+private fun eightBallReelResultText(selectedBall: Int?, actualBall: Int): String {
+    val actual = "${ballLabel(actualBall)} ball"
+    return if (selectedBall == actualBall) {
+        "Correct: $actual"
+    } else {
+        "You picked ${ballLabel(selectedBall ?: 0)}. Correct: $actual"
+    }
+}
+
+private fun eightBallReelPickerBalls(shot: EightBallShot): List<Int> {
+    return when (shot.meta.group) {
+        1 -> (1..7).toList()
+        2 -> (9..15).toList()
+        0 -> {
+            val actualBall = shot.meta.ball.takeIf { it in 1..15 && it != 8 }
+            val seed = shot.entry.id.fold(shot.meta.ball * 97) { acc, char ->
+                acc * 31 + char.code
+            }
+            val filler = (1..15)
+                .filter { it != 8 && it != actualBall }
+                .shuffled(Random(seed))
+                .take(if (actualBall == null) 7 else 6)
+
+            (if (actualBall == null) filler else filler + actualBall)
+                .shuffled(Random(seed * 31 + 17))
+        }
+        else -> (8..10).toList()
+    }
 }
 
 private fun shootingGroupLabel(meta: EightBallMeta, language: SiteLanguage): String {
@@ -1634,6 +2213,65 @@ private fun eightBallReelTitle(meta: EightBallMeta): String {
         2 -> "${meta.player} has stripes"
         else -> "${meta.player} has group ${meta.group}"
     }
+}
+
+private fun eightBallReelLikeLabel(shotId: String): String {
+    var value = 0
+    shotId.forEach { char ->
+        value = (value * 31 + char.code) % 76000
+    }
+    val count = 3600 + value
+    return if (count < 10000) {
+        count.toString()
+    } else {
+        "${count / 1000}.${(count % 1000) / 100}k"
+    }
+}
+
+private fun currentEightBallReelsShotId(): String? {
+    return js("new URLSearchParams(window.location.search).get('shot')") as? String
+}
+
+private fun updateEightBallReelsUrl(shotId: String?) {
+    val baseUrl = "${window.location.origin}${BasePath.prependTo("/8-ball-prediction-reels")}"
+    val nextUrl = if (shotId == null) baseUrl else "$baseUrl?shot=${encodeUriComponent(shotId)}"
+    js("window.history.replaceState(null, '', nextUrl)")
+}
+
+private fun eightBallReelsShareUrl(shot: EightBallShot): String {
+    return "${window.location.origin}${BasePath.prependTo("/8-ball-prediction-reels")}?shot=${encodeUriComponent(shot.entry.id)}"
+}
+
+private fun copyEightBallShareUrl(shot: EightBallShot) {
+    val url = eightBallReelsShareUrl(shot)
+    js("if (navigator.clipboard) { navigator.clipboard.writeText(url); }")
+}
+
+private fun shareEightBallShotNative(shot: EightBallShot): Boolean {
+    val title = eightBallReelTitle(shot.meta)
+    val url = eightBallReelsShareUrl(shot)
+    return js("""
+        (function() {
+            if (!navigator.share) return false;
+            navigator.share({ title: title, text: title, url: url }).catch(function() {});
+            return true;
+        })()
+    """) as Boolean
+}
+
+private fun openEightBallWhatsAppShare(shot: EightBallShot) {
+    val text = encodeUriComponent("${eightBallReelTitle(shot.meta)} ${eightBallReelsShareUrl(shot)}")
+    window.open("https://wa.me/?text=$text", "_blank")
+}
+
+private fun openEightBallEmailShare(shot: EightBallShot) {
+    val subject = encodeUriComponent(eightBallReelTitle(shot.meta))
+    val body = encodeUriComponent(eightBallReelsShareUrl(shot))
+    js("window.location.href = 'mailto:?subject=' + subject + '&body=' + body")
+}
+
+private fun encodeUriComponent(value: String): String {
+    return js("encodeURIComponent(value)") as String
 }
 
 private fun ballLabel(ball: Int): String {
