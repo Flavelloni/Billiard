@@ -104,6 +104,11 @@ private data class LiveTable(
     val matches: List<LiveMatch>,
 )
 
+private data class LiveTournamentTable(
+    val tournament: LiveTournament,
+    val table: LiveTable,
+)
+
 private data class LiveFargoPlayer(
     val id: String,
     val name: String,
@@ -120,7 +125,7 @@ private data class LivePairStats(
     val games: Int,
 )
 
-private var cachedLiveTournament: LiveTournament? = null
+private var cachedLiveTournaments: List<LiveTournament> = emptyList()
 private var cachedLivePlayers: List<LiveFargoPlayer> = emptyList()
 private var cachedLivePairs: List<LivePairStats> = emptyList()
 private var cachedLiveUpdatedAt: String = ""
@@ -134,7 +139,7 @@ fun initObkLiveTournamentProbabilitiesPage(ctx: InitRouteContext) {
 @Composable
 @Layout(".components.layouts.PageLayout")
 fun ObkLiveTournamentProbabilitiesPage() {
-    var tournament by remember { mutableStateOf(cachedLiveTournament) }
+    var tournaments by remember { mutableStateOf(cachedLiveTournaments.takeIf { it.isNotEmpty() }) }
     var players by remember { mutableStateOf(cachedLivePlayers) }
     var pairs by remember { mutableStateOf(cachedLivePairs) }
     var loadError by remember { mutableStateOf<String?>(null) }
@@ -142,14 +147,15 @@ fun ObkLiveTournamentProbabilitiesPage() {
     var historyBack by remember { mutableStateOf(0) }
     var manualRefreshEnabled by remember { mutableStateOf(true) }
     val ctx = rememberPageContext()
+    val tournamentQuery = ctx.route.queryParams["tournament"]?.toIntOrNull()
     val tableQuery = ctx.route.queryParams["table"]?.takeIf { it.isNotBlank() }
 
     fun refreshTournament() {
-        loadLatestObkTournament(
+        loadVisibleObkTournaments(
             onLoaded = {
-                cachedLiveTournament = it
+                cachedLiveTournaments = it
                 cachedLiveUpdatedAt = currentTimeText()
-                tournament = it
+                tournaments = it
                 loadError = null
                 updatedAt = cachedLiveUpdatedAt
             },
@@ -158,7 +164,7 @@ fun ObkLiveTournamentProbabilitiesPage() {
     }
 
     LaunchedEffect(Unit) {
-        if (cachedLiveTournament == null) {
+        if (cachedLiveTournaments.isEmpty()) {
             refreshTournament()
         }
         if (cachedLivePlayers.isEmpty()) {
@@ -195,13 +201,16 @@ fun ObkLiveTournamentProbabilitiesPage() {
         window.setTimeout({ manualRefreshEnabled = true }, 15000)
     }
 
-    val loadedTournament = tournament
-    val tables = loadedTournament?.matches.orEmpty()
-        .filter { it.tableName.isNotBlank() }
-        .groupBy { it.tableName }
-        .map { (name, matches) -> LiveTable(name, matches.sortedBy { matchSortTime(it) }) }
-        .sortedWith(compareBy<LiveTable> { it.name.toIntOrNull() ?: Int.MAX_VALUE }.thenBy { it.name })
-    val selectedTable = tableQuery?.let { query -> tables.firstOrNull { it.name == query } }
+    val loadedTournaments = tournaments
+    val tournamentTables = loadedTournaments.orEmpty()
+        .flatMap { liveTournament ->
+            liveTournament.tables().map { table -> LiveTournamentTable(liveTournament, table) }
+        }
+    val selectedTournamentTable = tableQuery?.let { query ->
+        tournamentTables.firstOrNull {
+            it.table.name == query && (tournamentQuery == null || it.tournament.tournamentId == tournamentQuery)
+        }
+    }
 
     Column(
         Modifier
@@ -240,25 +249,26 @@ fun ObkLiveTournamentProbabilitiesPage() {
 
         when {
             loadError != null -> LiveMessage(loadError ?: "Could not load live tournament.")
-            loadedTournament == null -> LiveLoadingMessage()
-            selectedTable != null -> TablePage(
-                tournament = loadedTournament,
-                table = selectedTable,
+            loadedTournaments == null -> LiveLoadingMessage()
+            selectedTournamentTable != null -> TablePage(
+                tournament = selectedTournamentTable.tournament,
+                table = selectedTournamentTable.table,
                 players = players,
                 pairs = pairs,
                 updatedAt = updatedAt,
-                historyBack = historyBack.coerceAtMost((selectedTable.matches.size - 1).coerceAtLeast(0)),
-                onHistoryBack = { historyBack = it.coerceIn(0, (selectedTable.matches.size - 1).coerceAtLeast(0)) },
+                historyBack = historyBack.coerceAtMost((selectedTournamentTable.table.matches.size - 1).coerceAtLeast(0)),
+                onHistoryBack = { historyBack = it.coerceIn(0, (selectedTournamentTable.table.matches.size - 1).coerceAtLeast(0)) },
                 manualRefreshEnabled = manualRefreshEnabled,
                 onRefresh = { manualRefreshTournament() },
                 onAllTables = { ctx.router.navigateTo("/obk-live-tournament-probabilities") },
             )
             else -> TournamentOverview(
-                tournament = loadedTournament,
-                tables = tables,
+                tournaments = loadedTournaments,
+                players = players,
+                pairs = pairs,
                 updatedAt = updatedAt,
-                onTable = { tableName ->
-                    ctx.router.navigateTo("/obk-live-tournament-probabilities?table=${encodeURIComponent(tableName)}")
+                onTable = { tournamentId, tableName ->
+                    ctx.router.navigateTo("/obk-live-tournament-probabilities?tournament=$tournamentId&table=${encodeURIComponent(tableName)}")
                 },
             )
         }
@@ -267,45 +277,232 @@ fun ObkLiveTournamentProbabilitiesPage() {
 
 @Composable
 private fun TournamentOverview(
-    tournament: LiveTournament,
-    tables: List<LiveTable>,
+    tournaments: List<LiveTournament>,
+    players: List<LiveFargoPlayer>,
+    pairs: List<LivePairStats>,
     updatedAt: String,
-    onTable: (String) -> Unit,
+    onTable: (Int, String) -> Unit,
 ) {
     LivePanel {
-        TournamentHeader(tournament, updatedAt)
-        if (isTournamentOver(tournament)) {
-            LiveMutedText("Tournament is over. Showing final table history from the latest started Oslo BK tournament.")
+        OverviewHeader(tournaments, updatedAt)
+        if (tournaments.all { isTournamentOver(it) }) {
+            LiveMutedText("No current tournament is available. Showing matches from the latest tournament day.")
         } else {
-            LiveMutedText("Tournament is live or scheduled to continue. Open a table page for QR-specific display.")
+            LiveMutedText("Showing all current Oslo BK tournaments. Open a match card for the full table page.")
         }
-        if (tables.isEmpty()) {
+        val tournamentTables = tournaments.flatMap { tournament ->
+            tournament.tables().map { table -> LiveTournamentTable(tournament, table) }
+        }
+        if (tournamentTables.isEmpty()) {
             LiveMessage("No table matches found in the tournament data yet.")
         } else {
             Row(
-                Modifier.fillMaxWidth().gap(0.65.cssRem).flexWrap(FlexWrap.Wrap),
-                verticalAlignment = Alignment.CenterVertically,
+                Modifier.fillMaxWidth().gap(0.8.cssRem).flexWrap(FlexWrap.Wrap),
+                verticalAlignment = Alignment.Top,
             ) {
-                tables.forEach { table ->
-                    Button(
-                        attrs = Modifier
-                            .padding(leftRight = 0.95.cssRem, topBottom = 0.72.cssRem)
-                            .borderRadius(14.px)
-                            .backgroundColor(Color.rgba(255, 116, 92, 0.16f))
-                            .border(1.px, LineStyle.Solid, Color.rgba(255, 116, 92, 0.38f))
-                            .color(Colors.White)
-                            .fontWeight(FontWeight.Bold)
-                            .styleModifier {
-                                property("display", "inline-flex")
-                                property("cursor", "pointer")
-                            }
-                            .toAttrs { onClick { onTable(table.name) } }
-                    ) {
-                        Text("Table ${table.name}")
+                tournamentTables.forEach { tournamentTable ->
+                    val match = tournamentTable.table.matches.maxByOrNull { matchSortTime(it) }
+                    if (match != null) {
+                        SimplifiedMatchCard(
+                            tournament = tournamentTable.tournament,
+                            table = tournamentTable.table,
+                            match = match,
+                            players = players,
+                            pairs = pairs,
+                            onClick = { onTable(tournamentTable.tournament.tournamentId, tournamentTable.table.name) },
+                        )
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SimplifiedMatchCard(
+    tournament: LiveTournament,
+    table: LiveTable,
+    match: LiveMatch,
+    players: List<LiveFargoPlayer>,
+    pairs: List<LivePairStats>,
+    onClick: () -> Unit,
+) {
+    val fargoA = findFargoPlayer(players, match.playerA)
+    val fargoB = findFargoPlayer(players, match.playerB)
+    val rackProbabilityA = if (fargoA != null && fargoB != null) fargoGameProbability(fargoA.rating, fargoB.rating) else null
+    val currentMatchProbabilityA = rackProbabilityA?.let {
+        matchWinProbabilityFromScore(it, match.raceTo, match.scoreA, match.scoreB)
+    }
+    //val h2h = if (fargoA != null && fargoB != null) findPairStats(pairs, fargoA.id, fargoB.id) else null
+
+    Button(
+        attrs = Modifier
+            .padding(0.85.cssRem)
+            .borderRadius(16.px)
+            .backgroundColor(Color.rgba(255, 255, 255, 0.075f))
+            .border(1.px, LineStyle.Solid, Color.rgba(255, 255, 255, 0.13f))
+            .color(Colors.White)
+            .styleModifier {
+                property("display", "flex")
+                property("flex-direction", "column")
+                property("gap", "0.72rem")
+                property("flex", "1 1 330px")
+                property("max-width", "380px")
+                property("box-sizing", "border-box")
+                property("cursor", "pointer")
+                property("text-align", "left")
+            }
+            .toAttrs { onClick { onClick() } }
+    ) {
+        Row(Modifier.fillMaxWidth().gap(0.55.cssRem).flexWrap(FlexWrap.Wrap), verticalAlignment = Alignment.CenterVertically) {
+            SimplifiedTableBadge(table.name)
+            LiveChip(match.matchstatus.ifBlank { "unknown" })
+            //if (tournament.name.isNotBlank()) LiveChip(tournament.name)
+        }
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .gap(0.58.cssRem)
+                .styleModifier {
+                    property("display", "grid")
+                    property("grid-template-columns", "minmax(0, 1fr) auto minmax(0, 1fr)")
+                    property("align-items", "center")
+                },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            SimplifiedPlayer(match.playerA, fargoA, alignEnd = false)
+            Row(Modifier.gap(0.38.cssRem), verticalAlignment = Alignment.CenterVertically) {
+                SimplifiedScore(match.scoreA)
+                Span(attrs = Modifier.fontSize(1.45.cssRem).fontWeight(FontWeight.Bold).color(Color.rgba(245, 248, 244, 0.58f)).toAttrs()) {
+                    Text("-")
+                }
+                SimplifiedScore(match.scoreB)
+            }
+            SimplifiedPlayer(match.playerB, fargoB, alignEnd = true)
+        }
+        Column(Modifier.fillMaxWidth().gap(0.32.cssRem), horizontalAlignment = Alignment.CenterHorizontally) {
+            Span(attrs = Modifier.fontSize(0.72.cssRem).fontWeight(FontWeight.Bold).color(Color.rgba(245, 248, 244, 0.56f)).toAttrs()) {
+                Text("Current win probabilities")
+            }
+            Row(Modifier.fillMaxWidth().gap(0.6.cssRem), verticalAlignment = Alignment.CenterVertically) {
+                SimplifiedProbability(currentMatchProbabilityA, alignEnd = false)
+                SimplifiedProbability(currentMatchProbabilityA?.let { 1.0 - it }, alignEnd = true)
+            }
+        }
+        /*if (h2h != null) {
+            Span(attrs = Modifier.fontSize(0.76.cssRem).color(Color.rgba(245, 248, 244, 0.56f)).toAttrs()) {
+                Text("H2H racks ${h2h.firstWins}-${h2h.secondWins} (${h2h.games})")
+            }
+        }
+         */
+    }
+}
+
+@Composable
+private fun SimplifiedTableBadge(tableName: String) {
+    Span(
+        attrs = Modifier
+            .padding(leftRight = 0.78.cssRem, topBottom = 0.42.cssRem)
+            .borderRadius(12.px)
+            .backgroundColor(Color.rgba(255, 116, 92, 0.24f))
+            .border(1.px, LineStyle.Solid, Color.rgba(255, 116, 92, 0.52f))
+            .fontSize(1.02.cssRem)
+            .fontWeight(FontWeight.Bold)
+            .lineHeight(1.0)
+            .color(Colors.White)
+            .toAttrs()
+    ) {
+        Text("Table $tableName")
+    }
+}
+
+@Composable
+private fun SimplifiedPlayer(player: LivePlayer, fargo: LiveFargoPlayer?, alignEnd: Boolean) {
+    Column(
+        Modifier
+            .gap(0.34.cssRem)
+            .styleModifier {
+                property("min-width", "0")
+                property("justify-self", if (alignEnd) "end" else "start")
+                property("text-align", if (alignEnd) "right" else "left")
+            },
+        horizontalAlignment = if (alignEnd) Alignment.End else Alignment.Start,
+    ) {
+        SmallPlayerImage(player)
+        Span(
+            attrs = Modifier
+                .fontSize(0.98.cssRem)
+                .fontWeight(FontWeight.Bold)
+                .lineHeight(1.1)
+                .color(Colors.White)
+                .styleModifier { property("overflow-wrap", "anywhere") }
+                .toAttrs()
+        ) {
+            Text(lastName(player.name).ifBlank { "Unknown" })
+        }
+        /*
+        Span(attrs = Modifier.fontSize(0.72.cssRem).color(Color.rgba(245, 248, 244, 0.56f)).toAttrs()) {
+            Text("PR ${fargo?.rating?.toInt()?.toString() ?: "-"}")
+        }
+         */
+    }
+}
+
+@Composable
+private fun SmallPlayerImage(player: LivePlayer) {
+    val image = normalizeImageUrl(player.image)
+    if (image.isBlank()) {
+        Div(
+            attrs = Modifier
+                .size(46.px)
+                .borderRadius(50.percent)
+                .backgroundColor(Color.rgba(255, 255, 255, 0.12f))
+                .border(1.px, LineStyle.Solid, Color.rgba(255, 255, 255, 0.16f))
+                .toAttrs()
+        )
+    } else {
+        Img(
+            src = image,
+            attrs = Modifier
+                .size(46.px)
+                .borderRadius(50.percent)
+                .backgroundColor(Color.rgba(255, 255, 255, 0.12f))
+                .border(1.px, LineStyle.Solid, Color.rgba(255, 255, 255, 0.16f))
+                .styleModifier { property("object-fit", "cover") }
+                .toAttrs { attr("alt", player.name) }
+        )
+    }
+}
+
+@Composable
+private fun SimplifiedScore(score: Int) {
+    Span(
+        attrs = Modifier
+            .fontSize(2.1.cssRem)
+            .fontWeight(FontWeight.Bold)
+            .lineHeight(1.0)
+            .color(Colors.White)
+            .toAttrs()
+    ) {
+        Text(score.toString())
+    }
+}
+
+@Composable
+private fun SimplifiedProbability(probability: Double?, alignEnd: Boolean) {
+    Span(
+        attrs = Modifier
+            .fontSize(1.2.cssRem)
+            .fontWeight(FontWeight.Bold)
+            .lineHeight(1.0)
+            .color(Color.rgb(255, 210, 132))
+            .styleModifier {
+                property("flex", "1 1 0")
+                property("text-align", if (alignEnd) "right" else "left")
+            }
+            .toAttrs()
+    ) {
+        Text(probability?.let { formatPercent(it) } ?: "-")
     }
 }
 
@@ -919,30 +1116,97 @@ private fun LiveRefreshButton(enabled: Boolean, onClick: () -> Unit) {
     }
 }
 
-private fun loadLatestObkTournament(onLoaded: (LiveTournament) -> Unit, onError: (String) -> Unit) {
+@Composable
+private fun OverviewHeader(tournaments: List<LiveTournament>, updatedAt: String) {
+    Column(Modifier.fillMaxWidth().gap(0.45.cssRem)) {
+        Span(
+            attrs = Modifier
+                .fontSize(1.15.cssRem)
+                .fontWeight(FontWeight.Bold)
+                .lineHeight(1.2)
+                .color(Colors.White)
+                .styleModifier { property("overflow-wrap", "anywhere") }
+                .toAttrs()
+        ) {
+            Text(
+                when (tournaments.size) {
+                    0 -> "Oslo BK tournaments"
+                    1 -> tournaments.first().name
+                    else -> "${tournaments.size} Oslo BK tournaments"
+                }
+            )
+        }
+        Row(Modifier.gap(0.45.cssRem).flexWrap(FlexWrap.Wrap), verticalAlignment = Alignment.CenterVertically) {
+            val disciplines = tournaments.map { it.discipline }.filter { it.isNotBlank() }.distinct()
+            disciplines.take(3).forEach { LiveChip(it) }
+            LiveChip(if (tournaments.any { !isTournamentOver(it) }) "Live" else "Latest day")
+            if (updatedAt.isNotBlank()) LiveChip("Updated $updatedAt")
+        }
+    }
+}
+
+private fun loadVisibleObkTournaments(onLoaded: (List<LiveTournament>) -> Unit, onError: (String) -> Unit) {
     fetchText(
         OBK_TOURNAMENTS_URL,
         onSuccess = { text ->
             val summaries = parseTournamentSummaries(text)
             val now = js("Date.now()") as Double
-            val latest = summaries
-                .filter { parseDateMs(it.starttime) <= now }
-                .maxByOrNull { parseDateMs(it.starttime) }
-                ?: summaries.minByOrNull { parseDateMs(it.starttime) }
+            val current = summaries.filter { isCurrentSummary(it, now) }
+            val selected = if (current.isNotEmpty()) {
+                current
+            } else {
+                val latestDay = summaries
+                    .filter { parseDateMs(it.starttime) <= now }
+                    .maxByOrNull { parseDateMs(it.starttime) }
+                    ?.let { tournamentDateKey(it.starttime) }
+                latestDay?.let { day -> summaries.filter { tournamentDateKey(it.starttime) == day } }
+                    ?: summaries.minByOrNull { parseDateMs(it.starttime) }?.let { listOf(it) }
+                    ?: emptyList()
+            }
 
-            if (latest == null) {
+            if (selected.isEmpty()) {
                 onError("No Oslo BK tournaments found.")
                 return@fetchText
             }
 
-            fetchText(
-                "$CUESCORE_API_BASE/tournament/?id=${latest.tournamentId}",
-                onSuccess = { tournamentText -> onLoaded(parseLiveTournament(tournamentText)) },
-                onError = { onError("Could not load tournament ${latest.tournamentId}: $it") },
-            )
+            loadTournamentDetails(selected, onLoaded, onError)
         },
         onError = { onError("Could not load Oslo BK tournament list: $it") },
     )
+}
+
+private fun loadTournamentDetails(
+    summaries: List<LiveTournamentSummary>,
+    onLoaded: (List<LiveTournament>) -> Unit,
+    onError: (String) -> Unit,
+) {
+    val loaded = mutableListOf<LiveTournament>()
+    val errors = mutableListOf<String>()
+    var remaining = summaries.size
+
+    fun completeOne() {
+        remaining -= 1
+        if (remaining > 0) return
+        if (loaded.isNotEmpty()) {
+            onLoaded(loaded.sortedWith(compareBy<LiveTournament> { parseDateMs(it.starttime) }.thenBy { it.name }))
+        } else {
+            onError(errors.firstOrNull() ?: "Could not load Oslo BK tournament details.")
+        }
+    }
+
+    summaries.forEach { summary ->
+        fetchText(
+            "$CUESCORE_API_BASE/tournament/?id=${summary.tournamentId}",
+            onSuccess = { tournamentText ->
+                loaded += parseLiveTournament(tournamentText)
+                completeOne()
+            },
+            onError = {
+                errors += "Could not load tournament ${summary.tournamentId}: $it"
+                completeOne()
+            },
+        )
+    }
 }
 
 private fun parseTournamentSummaries(json: String): List<LiveTournamentSummary> {
@@ -1150,8 +1414,27 @@ private fun isTournamentOver(tournament: LiveTournament): Boolean {
     return stop > 0.0 && stop < now
 }
 
+private fun isCurrentSummary(summary: LiveTournamentSummary, now: Double): Boolean {
+    val start = parseDateMs(summary.starttime)
+    val stop = parseDateMs(summary.stoptime)
+    if (start <= 0.0 || start > now) return false
+    return stop <= 0.0 || stop >= now
+}
+
+private fun LiveTournament.tables(): List<LiveTable> {
+    return matches
+        .filter { it.tableName.isNotBlank() }
+        .groupBy { it.tableName }
+        .map { (name, matches) -> LiveTable(name, matches.sortedBy { matchSortTime(it) }) }
+        .sortedWith(compareBy<LiveTable> { it.name.toIntOrNull() ?: Int.MAX_VALUE }.thenBy { it.name })
+}
+
 private fun matchSortTime(match: LiveMatch): Double {
     return parseDateMs(match.starttime).takeIf { it > 0.0 } ?: parseDateMs(match.stoptime)
+}
+
+private fun tournamentDateKey(value: String): String {
+    return value.take(10).takeIf { it.length == 10 } ?: value
 }
 
 private fun parseDateMs(value: String): Double {
@@ -1175,6 +1458,10 @@ private fun normalizeName(value: String): String {
     return value.trim().lowercase()
         .replace(Regex("\\s+"), " ")
         .replace(".", "")
+}
+
+private fun lastName(value: String): String {
+    return value.trim().split(Regex("\\s+")).lastOrNull().orEmpty()
 }
 
 private fun formatPercent(value: Double): String = "${(value * 1000.0).toInt() / 10.0}%"
